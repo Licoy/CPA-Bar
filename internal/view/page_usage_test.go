@@ -355,9 +355,11 @@ func TestUsageEnableStatsNeedsConfirmation(t *testing.T) {
 	if err := tt.Click("开启用量统计"); err != nil {
 		t.Fatal(err)
 	}
-	settle(tt, q, 200*time.Millisecond)
-	if !tt.HasText("开启用量统计？") || put() != 0 {
-		t.Fatalf("no confirmation, or a write before it (%d); texts: %q", put(), tt.Texts())
+	pump(t, tt, q, 5*time.Second, "the confirmation", func() bool {
+		return tt.HasText("开启用量统计？")
+	})
+	if put() != 0 {
+		t.Fatalf("a write before the confirmation (%d)", put())
 	}
 	if err := tt.Click("取消"); err != nil {
 		t.Fatal(err)
