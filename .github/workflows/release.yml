@@ -172,6 +172,44 @@ jobs:
           test -n "$MYGO_UPDATER_PRIVATE_KEY" || { echo "::error::Secret MYGO_UPDATER_PRIVATE_KEY is empty."; exit 1; }
           go run "$MYGO_CLI" build -platform "${{ matrix.platform }}" -upload
 
+      - name: Remove the self-signed DMG wrapper and replace the draft installers
+        if: matrix.name == 'macOS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # mygo signs both the app and its DMG with the same identity. A
+          # self-signed DMG adds a Gatekeeper rejection before installation;
+          # only Developer ID identities should sign disk images (Apple TN2206).
+          # Keep the app and update signatures intact. First app launch still
+          # needs approval until we use Developer ID signing and notarization.
+          if [ "$(jq -r .macos.signingIdentity mygo.json)" = "CPA-Bar Self-Signed" ]; then
+            out="$(jq -r .out mygo.json)"
+            name="$(jq -r .name mygo.json)"
+            version="$(jq -r .version mygo.json)"
+            images=()
+            for arch in arm64 amd64; do
+              dmg="$out/darwin-$arch/$name $version $arch.dmg"
+              codesign --verify --strict --verbose "$dmg"
+              # codesign --remove-signature does not support disk images.
+              # Re-encode the container; its filesystem and app stay intact.
+              unsigned="${dmg%.dmg}.unsigned.dmg"
+              hdiutil convert "$dmg" -format ULMO -ov -o "$unsigned"
+              hdiutil verify "$unsigned"
+              if signature="$(LC_ALL=C codesign --display "$unsigned" 2>&1)"; then
+                echo "::error::Rebuilt DMG unexpectedly still has a signature."
+                exit 1
+              fi
+              case "$signature" in
+                *"code object is not signed at all") ;;
+                *) echo "$signature" >&2; exit 1 ;;
+              esac
+              mv "$unsigned" "$dmg"
+              images+=("$dmg")
+            done
+            gh release upload "$GITHUB_REF_NAME" "${images[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          fi
+
       - name: Remove the signing keychain and certificates
         if: always()
         run: |

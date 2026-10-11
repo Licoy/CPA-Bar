@@ -77,12 +77,12 @@ CPA itself needs the v8 management API (tested with CLIProxyAPI v8.0.23).
 
 Download the package for your platform from [Releases](https://github.com/Licoy/CPA-Bar/releases). `SHA256SUMS` lists the checksums of every file.
 
-Builds are self-signed and not notarized, so the first launch asks for confirmation. The steps below allow CPA-Bar only; no system security feature needs to be turned off.
+The macOS app and Windows installers use self-signed certificates; the macOS app is not notarized by Apple. The system may block the first launch and require manual approval. The steps below allow CPA-Bar only; no system security feature needs to be turned off.
 
 ### macOS
 
 1. Open the `.dmg` and drag CPA-Bar into Applications.
-2. Control-click (right-click) the app and choose **Open**. On macOS 15 and later, try opening it once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
+2. Open CPA-Bar from Applications. If macOS blocks it, go to **System Settings > Privacy & Security**, click **Open Anyway**, then confirm **Open**. Self-signing does not remove this first-launch requirement, including on macOS 15 and later.
 3. Alternatively, after checking the download against `SHA256SUMS`, clear the quarantine flag of this app only:
 
    ```sh
