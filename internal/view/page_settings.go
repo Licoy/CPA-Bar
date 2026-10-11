@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/licoy/cpa-bar/internal/store"
@@ -21,6 +22,14 @@ func init() {
 
 // Version is the app's version, set by main.
 var Version = "dev"
+
+// versionLabel is Version as shown, "v1.0.0".
+func versionLabel() string {
+	if Version == "" || Version == "dev" || strings.HasPrefix(Version, "v") {
+		return Version
+	}
+	return "v" + Version
+}
 
 type settingsState struct {
 	background string
@@ -181,7 +190,7 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 				SetAutomaticUpdateChecks(on)
 			}
 		})
-		row(T("当前版本", "Current version"), "CPA-Bar "+Version, func() {
+		row(T("当前版本", "Current version"), "CPA-Bar "+versionLabel(), func() {
 			if PillButton(c, icRefresh, T("立即检查更新", "Check Now"), false).Clicked() {
 				CheckForUpdates()
 			}

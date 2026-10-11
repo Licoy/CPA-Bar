@@ -209,7 +209,7 @@ func (a *App) sidebarValue(id string, s core.InstanceSnapshot, ok bool, instance
 	case "instances":
 		return strconv.Itoa(instances)
 	case "settings":
-		return Version
+		return versionLabel()
 	}
 	return ""
 }
@@ -260,7 +260,7 @@ func (a *App) instanceSwitcher(c *ui.Context, snaps []core.InstanceSnapshot) {
 		if len(snaps) == 0 {
 			ui.Column(c).Padding(6, 8).Gap(2).Children(func() {
 				ui.Text(c, T("尚未添加实例", "No instances")).FontSize(13).FontWeight(600)
-				ui.Text(c, "CPA-Bar "+Version).FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, "CPA-Bar "+versionLabel()).FontSize(11).TextColor(t.TextMuted)
 			})
 			return
 		}

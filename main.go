@@ -3,6 +3,8 @@
 package main
 
 import (
+	_ "embed"
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +16,26 @@ import (
 	"github.com/licoy/cpa-bar/internal/view"
 )
 
+// mygoJSON is the packaging config, which holds the app's version.
+//
+//go:embed mygo.json
+var mygoJSON []byte
+
+// appVersion is the version of the packaged app, or, run with go run or
+// go build, the version in mygo.json.
+func appVersion() string {
+	if v := mygo.App.Version(); v != "" {
+		return v
+	}
+	var cfg struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(mygoJSON, &cfg) != nil {
+		return ""
+	}
+	return cfg.Version
+}
+
 func main() {
 	app := mygo.App
 	app.SetName("CPA-Bar")
@@ -21,7 +43,7 @@ func main() {
 		// The running instance opens its window.
 		return
 	}
-	if v := app.Version(); v != "" {
+	if v := appVersion(); v != "" {
 		view.Version = v
 	}
 

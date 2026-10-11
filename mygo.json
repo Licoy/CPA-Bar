@@ -1,7 +1,7 @@
 {
   "name": "CPA-Bar",
   "identifier": "com.github.licoy.cpabar",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "copyright": "Copyright (c) 2026 Licoy",
   "icon": "resources/icon.png",
   "out": "build",
