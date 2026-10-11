@@ -2,8 +2,10 @@
 
 package view
 
-import "github.com/egoist/mygo"
+type panelPopoverState struct{}
 
-// matchAppAppearance is for macOS's popover; elsewhere the panel is a
-// window of the app's.
-func matchAppAppearance(*mygo.Window) {}
+func panelOpacitySupported() bool           { return false }
+func observePanelPopover(*App, bool) func() { return func() {} }
+func (a *App) matchPanelAppearance()        {}
+func panelContentInsets(*App) panelInsets   { return panelInsets{} }
+func releasePanelPopover(a *App)            { a.panelSafeArea = panelInsets{} }

@@ -3,6 +3,7 @@ package view
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"slices"
 	"strconv"
 	"time"
@@ -21,8 +22,16 @@ type panelList struct {
 	creds     ui.ListState
 }
 
+type panelInsets struct {
+	top, right, bottom, left float32
+}
+
 func (a *App) panelView(c *ui.Context) {
-	t := applyTheme(c)
+	opaque := runtime.GOOS == "darwin" && a.Svc.Settings().PanelOpaque && panelOpacitySupported()
+	t := applyThemeWithMaterial(c, c.Vibrancy() && !opaque)
+	if opaque {
+		c.Root().Background(ui.Transparent)
+	}
 	snaps := a.Svc.Snapshots()
 	if a.panelInstance != "" && !slices.ContainsFunc(snaps, func(s core.InstanceSnapshot) bool { return s.Profile.ID == a.panelInstance }) {
 		a.panelInstance = ""
@@ -38,7 +47,8 @@ func (a *App) panelView(c *ui.Context) {
 		a.panelLists[a.panelInstance] = lists
 	}
 
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
+	insets := panelContentInsets(a)
+	ui.Column(c).Fill().Background(t.Background).Padding(insets.top, insets.right, insets.bottom, insets.left).Children(func() {
 		a.panelTop(c, snaps)
 		ui.Column(c).Grow(1).Padding(4, 14, 10, 14).Gap(10).Children(func() {
 			if len(snaps) == 0 {

@@ -126,6 +126,12 @@ var themes, materialThemes [2]*ui.Theme
 // applyTheme makes the frame use CPA-Bar's theme in the system's (or the
 // chosen) appearance. Views call it first.
 func applyTheme(c *ui.Context) *ui.Theme {
+	return applyThemeWithMaterial(c, c.Vibrancy())
+}
+
+// applyThemeWithMaterial lets a view over native vibrancy draw a solid
+// background instead of showing the system material through it.
+func applyThemeWithMaterial(c *ui.Context, material bool) *ui.Theme {
 	i := 0
 	if c.Theme().Dark {
 		i = 1
@@ -133,12 +139,8 @@ func applyTheme(c *ui.Context) *ui.Theme {
 	if themes[i] == nil {
 		themes[i] = buildTheme(i == 1)
 	}
-	if c.Vibrancy() {
-		// The macOS panel is an NSPopover: the system draws its material
-		// and its arrow, and the arrow can only match what the panel shows
-		// when the panel shows that same material instead of an opaque
-		// background of its own (see FlyoutOptions.Popover). The material
-		// follows the appearance, light or dark, as the arrow does.
+	if material {
+		// The system material follows the appearance, light or dark.
 		if materialThemes[i] == nil {
 			t := *themes[i]
 			t.Background = ui.Transparent
@@ -357,11 +359,16 @@ func pillButton(c *ui.Context, icon *ui.SVG, label string, disabled, busy bool) 
 // PillTabs is a capsule segmented control, as the period picker of Pulse.
 // It reports whether the choice changed.
 func PillTabs(c *ui.Context, selected *int, labels ...string) bool {
+	return PillTabsDisabled(c, selected, -1, labels...)
+}
+
+// PillTabsDisabled is PillTabs with one unavailable choice.
+func PillTabsDisabled(c *ui.Context, selected *int, disabled int, labels ...string) bool {
 	t := c.Theme()
 	seg := ui.SegmentedBase(c, selected, len(labels))
 	seg.Track.Padding(3).Gap(2).Radius(999).Background(t.Text.Alpha(0.06)).Children(func() {
 		for i, l := range labels {
-			s := seg.Segment(i).Padding(5, 14).Radius(999)
+			s := seg.Segment(i).Padding(5, 14).Radius(999).Disabled(i == disabled)
 			col := t.TextMuted
 			if i == *selected {
 				col = t.Text

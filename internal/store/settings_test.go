@@ -56,6 +56,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in.DefaultInstanceID = "b"
 	in.Appearance = AppearanceDark
 	in.Language = LanguageEN
+	in.PanelOpaque = true
 	in.BackgroundRefresh = 60
 	in.ActiveRefresh = 5
 	in.LaunchAtLogin = true
@@ -249,6 +250,18 @@ func TestLoadVersionZeroIsBackedUpBeforeMigration(t *testing.T) {
 			t.Errorf("got %+v, want %+v", got, want)
 		}
 	})
+}
+
+func TestLoadWithoutPanelOpaqueKeepsTranslucentDefault(t *testing.T) {
+	f := newFile(t)
+	writeRaw(t, f, `{"version":1,"instances":[],"appearance":"system","language":"zh-CN","backgroundRefresh":30,"activeRefresh":10}`)
+	got, err := f.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PanelOpaque {
+		t.Error("a settings file without panelOpaque became opaque")
+	}
 }
 
 func TestLoadBackupFailureAbortsMigration(t *testing.T) {

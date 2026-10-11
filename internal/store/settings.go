@@ -83,6 +83,9 @@ type Settings struct {
 
 	Appearance string `json:"appearance"`
 	Language   string `json:"language"`
+	// PanelOpaque uses a solid panel on macOS; the zero value keeps the
+	// system's translucent popover.
+	PanelOpaque bool `json:"panelOpaque,omitempty"`
 
 	// Refresh intervals in seconds.
 	BackgroundRefresh int `json:"backgroundRefresh"`

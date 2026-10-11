@@ -45,6 +45,8 @@ type App struct {
 	panelTask     Task
 	panelCreds    map[string]*Task // per instance+credential toggles
 	panelLists    map[string]*panelList
+	panelPopover  panelPopoverState
+	panelSafeArea panelInsets
 	// quotas caches the quota of the accounts, per instance.
 	quotas map[string]*quotaInstance
 
@@ -125,7 +127,7 @@ func (a *App) Ready() {
 		mygo.Theme.OnUpdated(a.updateTray)
 		// The panel's popover follows the app's appearance, not the menu
 		// bar's.
-		mygo.Theme.OnUpdated(func() { matchAppAppearance(a.panel) })
+		mygo.Theme.OnUpdated(a.matchPanelAppearance)
 	}
 
 	a.Svc.Subscribe(func() {
@@ -339,6 +341,7 @@ func (a *App) OpenPanel() {
 		return
 	}
 	a.panelLists = nil
+	stopObserving := observePanelPopover(a, a.Svc.Settings().PanelOpaque && panelOpacitySupported())
 	opts := mygo.FlyoutOptions{
 		Tray:      a.tray,
 		Placement: mygo.PlacementBottom,
@@ -350,12 +353,17 @@ func (a *App) OpenPanel() {
 		Popover:   runtime.GOOS == "darwin",
 		Content:   ui.View(a.panelView),
 	}
-	a.panel = mygo.NewFlyout(opts)
+	func() {
+		defer stopObserving()
+		a.panel = mygo.NewFlyout(opts)
+	}()
 	panel := a.panel
-	panel.OnShow(func() { matchAppAppearance(panel) })
-	panel.OnFocus(func() { matchAppAppearance(panel) })
-	matchAppAppearance(panel)
+	panel.OnShow(a.matchPanelAppearance)
+	panel.OnFocus(a.matchPanelAppearance)
+	a.matchPanelAppearance()
+	panel.Invalidate()
 	a.panel.OnClosed(func() {
+		releasePanelPopover(a)
 		a.panel = nil
 		a.syncActive()
 	})

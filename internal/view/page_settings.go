@@ -23,6 +23,8 @@ func init() {
 // Version is the app's version, set by main.
 var Version = "dev"
 
+var panelOpaqueAvailable = panelOpacitySupported
+
 // versionLabel is Version as shown, "v1.0.0".
 func versionLabel() string {
 	if Version == "" || Version == "dev" || strings.HasPrefix(Version, "v") {
@@ -51,13 +53,42 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 		st.login = system.OpenAtLogin()
 		st.loaded = true
 	}
-	save := func(fn func(*store.Settings)) {
+	save := func(fn func(*store.Settings)) bool {
 		st.err = a.Svc.UpdateSettings(fn)
+		return st.err == nil
 	}
 
 	ErrorBanner(c, st.err)
 
 	settingsGroup(c, icPanel, TintBlue, T("外观", "Appearance"), func(row func(label, detail string, control func())) {
+		if runtime.GOOS == "darwin" {
+			supported := panelOpaqueAvailable()
+			detail := ""
+			if !supported {
+				detail = T("当前使用半透明；不透明模式需要 macOS 14 或更新版本", "Currently translucent; opaque mode requires macOS 14 or later")
+			}
+			row(T("面板背景", "Panel background"), detail, func() {
+				i := 0
+				if supported && cur.PanelOpaque {
+					i = 1
+				}
+				disabled := -1
+				if !supported {
+					disabled = 1
+				}
+				if PillTabsDisabled(c.Key("panel-background"), &i, disabled, T("半透明", "Translucent"), T("不透明", "Opaque")) {
+					opaque := i == 1
+					if save(func(s *store.Settings) { s.PanelOpaque = opaque }) {
+						a.ClosePanel()
+					}
+				}
+				if !supported && cur.PanelOpaque && ui.Button(c, T("保存半透明", "Save Translucent")).Radius(999).Clicked() {
+					if save(func(s *store.Settings) { s.PanelOpaque = false }) {
+						a.ClosePanel()
+					}
+				}
+			})
+		}
 		row(T("主题", "Theme"), "", func() {
 			modes := []string{store.AppearanceSystem, store.AppearanceLight, store.AppearanceDark}
 			i := max(0, indexOf(modes, cur.Appearance))

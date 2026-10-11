@@ -145,3 +145,51 @@ func TestPanelOverMaterialUsesTransparentTheme(t *testing.T) {
 		}
 	}
 }
+
+func TestOpaquePanelFillsBackgroundAndReservesSafeArea(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("opaque panel is a macOS setting")
+	}
+	a, _ := newTestApp(t, false)
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PanelOpaque = true }); err != nil {
+		t.Fatal(err)
+	}
+	tt := ui.NewTester(a.panelView, panelWidth, panelHeight)
+	tt.SetVibrancy(true)
+	for _, dark := range []bool{false, true} {
+		a.panelSafeArea = panelInsets{}
+		tt.SetDark(dark)
+		tt.Frame()
+		base, ok := tt.Find("CPA-Bar")
+		if !ok {
+			t.Fatal("panel title is missing")
+		}
+		a.panelSafeArea = panelInsets{top: 18, right: 9, bottom: 11, left: 13}
+		tt.Frame()
+		img := tt.Image()
+		if alpha := img.RGBAAt(panelWidth/2, panelHeight/2).A; alpha != 255 {
+			t.Errorf("dark=%v center alpha = %d, want 255", dark, alpha)
+		}
+		if alpha := img.RGBAAt(0, panelHeight/2).A; alpha != 255 {
+			t.Errorf("dark=%v background alpha = %d, want 255", dark, alpha)
+		}
+		inset, _ := tt.Find("CPA-Bar")
+		if inset.X-base.X != 13 || inset.Y-base.Y != 18 {
+			t.Errorf("dark=%v title moved by %v,%v, want 13,18", dark, inset.X-base.X, inset.Y-base.Y)
+		}
+		if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PanelOpaque = false }); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if alpha := tt.Image().RGBAAt(0, panelHeight/2).A; alpha != 0 {
+			t.Errorf("dark=%v translucent background alpha = %d, want 0", dark, alpha)
+		}
+		translucent, _ := tt.Find("CPA-Bar")
+		if translucent.X != base.X || translucent.Y != base.Y {
+			t.Errorf("dark=%v translucent title at %v,%v, want %v,%v", dark, translucent.X, translucent.Y, base.X, base.Y)
+		}
+		if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PanelOpaque = true }); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
