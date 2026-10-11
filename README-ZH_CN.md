@@ -143,3 +143,7 @@ go run github.com/egoist/mygo/cmd/mygo@v0.4.1 build -platform darwin/arm64
 ## 社区支持
 
 - [LinuxDO](https://linux.do)
+
+## 许可证
+
+CPA-Bar 采用 GNU Affero General Public License v3（AGPL-3.0）许可证，完整条款见 [LICENSE](LICENSE)。

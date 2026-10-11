@@ -60,8 +60,11 @@ func aboutPage(c *ui.Context, env *PageEnv) {
 			aboutRow(c, icCpu, T("系统架构", "Platform"), true, func() {
 				ui.Text(c, runtime.GOOS+"/"+runtime.GOARCH).FontSize(13).Selectable()
 			})
-			aboutRow(c, icGithub, T("仓库", "Repository"), false, func() {
+			aboutRow(c, icGithub, T("仓库", "Repository"), true, func() {
 				ui.Link(c, RepoURL, RepoURL).FontSize(13)
+			})
+			aboutRow(c, icInfo, T("许可证", "License"), false, func() {
+				ui.Link(c, "GNU AGPL v3", RepoURL+"/blob/main/LICENSE").FontSize(13)
 			})
 		})
 	})

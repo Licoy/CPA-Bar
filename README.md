@@ -143,3 +143,7 @@ Packaging signs with the identities named in `mygo.json`; on macOS, add `-sign -
 ## Community support
 
 - [LinuxDO](https://linux.do)
+
+## License
+
+CPA-Bar is licensed under the GNU Affero General Public License v3 (AGPL-3.0), see [LICENSE](LICENSE) for the full text.
