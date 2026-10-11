@@ -1,0 +1,26 @@
+{
+  "name": "CPA-Bar",
+  "identifier": "com.github.licoy.cpabar",
+  "version": "0.1.0",
+  "copyright": "Copyright (c) 2026 Licoy",
+  "icon": "resources/icon.png",
+  "out": "build",
+  "updates": {
+    "publicKey": "REPLACE_WITH_MYGO_UPDATE_PUB",
+    "github": "Licoy/CPA-Bar",
+    "deltas": 0
+  },
+  "macos": {
+    "signingIdentity": "CPA-Bar Self-Signed",
+    "infoPlist": { "LSUIElement": true }
+  },
+  "windows": {
+    "certificate": "certs/cpabar-codesign.pfx"
+  },
+  "linux": {
+    "maintainer": "Licoy <licoy@users.noreply.github.com>",
+    "comment": "Menu-bar monitor for CLIProxyAPI (CPA) instances",
+    "categories": ["Utility", "Network"],
+    "depends": ["libayatana-appindicator3-1", "gnome-keyring | kwalletmanager"]
+  }
+}

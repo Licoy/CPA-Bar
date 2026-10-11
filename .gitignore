@@ -1,0 +1,26 @@
+# Planning notes (local only)
+PLAN.md
+
+# Build output
+/build/
+/dist/
+/.mygo/
+
+# Update signing keys never enter the repository
+*.key
+mygo-update.key
+
+# Go
+*.test
+*.out
+coverage.*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Code signing material (never commit)
+certs/
+*.pfx
+*.p12
