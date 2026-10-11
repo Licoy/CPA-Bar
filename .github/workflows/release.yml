@@ -321,6 +321,19 @@ jobs:
           [ "$fail" = 0 ] || exit 1
           echo "All platform assets and manifests are on the draft."
 
+      - name: Add release notes to update manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          grep -q '[^[:space:]]' release-notes.md
+          # Notes are manifest metadata; the signatures cover the archives.
+          for m in manifests/update-*.json; do
+            jq --rawfile notes release-notes.md '.notes = $notes' "$m" > "$m.tmp"
+            mv "$m.tmp" "$m"
+          done
+          gh release upload "$GITHUB_REF_NAME" manifests/update-*.json --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Write SHA256SUMS and upload it
         env:
           GH_TOKEN: ${{ github.token }}
@@ -332,6 +345,12 @@ jobs:
             while IFS=$'\t' read -r name api; do
               gh api -H "Accept: application/octet-stream" "$api" > "dl/$name"
             done
+          for t in darwin-arm64 darwin-amd64 windows-amd64 windows-arm64 linux-amd64 linux-arm64; do
+            jq -e --rawfile notes release-notes.md '.notes == $notes' "dl/update-$t.json" > /dev/null || {
+              echo "::error::update-$t.json release notes do not match the release body."
+              exit 1
+            }
+          done
           # Everything on the draft except SHA256SUMS itself, so a re-run replaces it cleanly.
           (cd dl && sha256sum -- * > ../SHA256SUMS)
           cat SHA256SUMS
