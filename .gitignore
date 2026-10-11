@@ -5,6 +5,7 @@ PLAN.md
 /build/
 /dist/
 /.mygo/
+/output/
 
 # Update signing keys never enter the repository
 *.key
