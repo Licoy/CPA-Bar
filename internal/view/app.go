@@ -395,6 +395,7 @@ func (a *App) OpenManager(page string) {
 	// shown in: a new window starts afresh.
 	a.pageState = map[string]any{}
 	a.manager = mygo.NewWindow(mygo.WindowOptions{
+		StateKey:  "manager",
 		Title:     "CPA-Bar",
 		Width:     managerWidth,
 		Height:    managerHeight,
