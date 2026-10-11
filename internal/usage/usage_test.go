@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,8 +79,10 @@ func TestStoreKeepsAndExpires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi, _ := os.Stat(filepath.Join(dir, "i1.jsonl")); fi.Mode().Perm() != 0o600 {
-		t.Errorf("file mode %v", fi.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		if fi, _ := os.Stat(filepath.Join(dir, "i1.jsonl")); fi.Mode().Perm() != 0o600 {
+			t.Errorf("file mode %v", fi.Mode().Perm())
+		}
 	}
 	if strings.Contains(string(data), "sk-live") {
 		t.Error("the key reached the disk")
