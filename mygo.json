@@ -6,7 +6,7 @@
   "icon": "resources/icon.png",
   "out": "build",
   "updates": {
-    "publicKey": "REPLACE_WITH_MYGO_UPDATE_PUB",
+    "publicKey": "gg+0NA/457LE4kxQ/0vY8t1VRN7dP74soXyNQ9dDyeY=",
     "github": "Licoy/CPA-Bar",
     "deltas": 0
   },
