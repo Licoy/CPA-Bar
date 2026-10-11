@@ -314,7 +314,7 @@ func TestNormalize(t *testing.T) {
 		if s.BackgroundRefresh != d.BackgroundRefresh || s.ActiveRefresh != d.ActiveRefresh {
 			t.Errorf("intervals = %d/%d", s.BackgroundRefresh, s.ActiveRefresh)
 		}
-		if s.Appearance != AppearanceSystem || s.Language != LanguageZH {
+		if s.Appearance != AppearanceSystem || s.Language != LanguageAuto {
 			t.Errorf("appearance/language = %q/%q", s.Appearance, s.Language)
 		}
 		if s.Instances == nil {
@@ -332,6 +332,13 @@ func TestNormalize(t *testing.T) {
 			s.Normalize()
 			if s.Appearance != ap {
 				t.Errorf("appearance %q became %q", ap, s.Appearance)
+			}
+		}
+		for _, language := range []string{LanguageAuto, LanguageZH, LanguageEN} {
+			s := Settings{Language: language}
+			s.Normalize()
+			if s.Language != language {
+				t.Errorf("language %q became %q", language, s.Language)
 			}
 		}
 	})
@@ -381,7 +388,7 @@ func TestNormalize(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.Instances[0].ID != "a" || got.Instances[1].Order != 1 || got.DefaultInstanceID != "" ||
-			got.BackgroundRefresh != 30 || got.ActiveRefresh != 10 || got.Language != LanguageZH || got.Appearance != AppearanceSystem {
+			got.BackgroundRefresh != 30 || got.ActiveRefresh != 10 || got.Language != LanguageAuto || got.Appearance != AppearanceSystem {
 			t.Errorf("Load did not normalize: %+v", got)
 		}
 	})

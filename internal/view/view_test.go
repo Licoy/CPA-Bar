@@ -58,6 +58,9 @@ func newTestApp(t *testing.T, withInstance bool) (*App, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(svc.Close)
+	if err := SetLanguage(svc.Settings().Language); err != nil {
+		t.Fatal(err)
+	}
 	id := ""
 	if withInstance {
 		srv := fakeCPA(t)
@@ -169,5 +172,6 @@ func TestMain(m *testing.M) {
 	system.SetAutomaticChecks = func(bool) {}
 	system.CheckForUpdates = func() {}
 	system.SetThemeSource = func(mygo.ThemeSource) {}
+	system.Locale = func() (string, error) { return "zh-CN", nil }
 	os.Exit(m.Run())
 }

@@ -99,13 +99,17 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 			}
 		})
 		row(T("语言", "Language"), "", func() {
-			langs := []string{store.LanguageZH, store.LanguageEN}
+			langs := []string{store.LanguageAuto, store.LanguageZH, store.LanguageEN}
 			i := max(0, indexOf(langs, cur.Language))
-			if PillTabs(c.Key("lang"), &i, "简体中文", "English") {
-				lang := langs[i]
-				save(func(s *store.Settings) { s.Language = lang })
-				SetLanguage(lang)
-				a.changed()
+			if PillTabs(c.Key("lang"), &i, T("自动", "Auto"), "简体中文", "English") {
+				setting := langs[i]
+				resolved, err := resolveLanguage(setting)
+				if err != nil {
+					st.err = err
+				} else if save(func(s *store.Settings) { s.Language = setting }) {
+					setResolvedLanguage(resolved)
+					a.changed()
+				}
 			}
 		})
 		row(T("隐私模式", "Privacy mode"), T("将 CPA 地址、账号邮箱和名称的中间部分显示为 ***，便于截图或共享屏幕。“复制地址”仍复制完整地址。", "Show the middle of CPA addresses, account emails and names as ***, for screenshots and screen sharing. Copy Address still copies the full address."), func() {

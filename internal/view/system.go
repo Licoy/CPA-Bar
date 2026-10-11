@@ -16,6 +16,7 @@ var system = struct {
 	SetAutomaticChecks     func(bool)
 	CheckForUpdates        func()
 	SetThemeSource         func(mygo.ThemeSource)
+	Locale                 func() (string, error)
 }{
 	OpenAtLogin:            func() bool { return mygo.App.OpenAtLogin() },
 	SetOpenAtLogin:         func(on bool) error { return mygo.App.SetOpenAtLogin(on) },
@@ -25,4 +26,5 @@ var system = struct {
 	SetAutomaticChecks:     updater.SetAutomaticChecks,
 	CheckForUpdates:        updater.CheckForUpdates,
 	SetThemeSource:         mygo.Theme.SetSource,
+	Locale:                 preferredSystemLocale,
 }

@@ -63,7 +63,9 @@ func main() {
 	}
 
 	st := svc.Settings()
-	view.SetLanguage(st.Language)
+	if err := view.SetLanguage(st.Language); err != nil {
+		log.Fatal("language: ", err)
+	}
 	view.ApplyAppearance(st.Appearance)
 	view.UseUpdater(st)
 

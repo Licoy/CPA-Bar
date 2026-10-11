@@ -11,7 +11,10 @@ import (
 )
 
 func TestSettingsSwitchThemeAndLanguage(t *testing.T) {
-	defer SetLanguage(store.LanguageZH)
+	defer func() { _ = SetLanguage(store.LanguageZH) }()
+	if err := SetLanguage(store.LanguageZH); err != nil {
+		t.Fatal(err)
+	}
 	a, _ := newTestApp(t, false)
 	a.page = "settings"
 	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
@@ -31,6 +34,37 @@ func TestSettingsSwitchThemeAndLanguage(t *testing.T) {
 	}
 	if !tt.HasText("Appearance") {
 		t.Errorf("the page is not in English; texts: %q", tt.Texts())
+	}
+}
+
+func TestSettingsLanguageChoices(t *testing.T) {
+	original := system.Locale
+	system.Locale = func() (string, error) { return "zh-TW", nil }
+	defer func() { system.Locale = original; _ = SetLanguage(store.LanguageZH) }()
+	if err := SetLanguage(store.LanguageZH); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newTestApp(t, false)
+	a.page = "settings"
+	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
+	for _, choice := range []struct {
+		label string
+		want  string
+	}{
+		{"English", store.LanguageEN},
+		{"简体中文", store.LanguageZH},
+		{"自动", store.LanguageAuto},
+	} {
+		if err := tt.Click(choice.label); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if got := a.Svc.Settings().Language; got != choice.want {
+			t.Errorf("after %q language = %q, want %q", choice.label, got, choice.want)
+		}
+	}
+	if English() {
+		t.Error("automatic language did not immediately follow zh-TW")
 	}
 }
 
@@ -94,6 +128,63 @@ func TestPanelBackgroundSaveFailureHasNoEffect(t *testing.T) {
 	}
 	if !tt.HasText("save settings: disk full") {
 		t.Fatalf("save failure is not visible: %q", tt.Texts())
+	}
+}
+
+func TestLanguageSaveFailureHasNoEffect(t *testing.T) {
+	defer func() { _ = SetLanguage(store.LanguageZH) }()
+	if err := SetLanguage(store.LanguageZH); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := core.New(core.Options{Settings: failingSettings{store.Defaults()}, Secrets: &store.MemorySecrets{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	a := NewApp(svc)
+	a.page = "settings"
+	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
+	if err := tt.Click("English"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.Svc.Settings().Language; got != store.LanguageAuto {
+		t.Errorf("failed save changed language setting to %q", got)
+	}
+	if English() {
+		t.Error("failed save changed the active language")
+	}
+	if !tt.HasText("save settings: disk full") {
+		t.Fatalf("save failure is not visible: %q", tt.Texts())
+	}
+}
+
+func TestAutomaticLanguageResolveFailureHasNoEffect(t *testing.T) {
+	a, _ := newTestApp(t, false)
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.Language = store.LanguageZH }); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetLanguage(store.LanguageZH); err != nil {
+		t.Fatal(err)
+	}
+	original := system.Locale
+	system.Locale = func() (string, error) { return "", errors.New("locale unavailable") }
+	defer func() { system.Locale = original; _ = SetLanguage(store.LanguageZH) }()
+
+	a.page = "settings"
+	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
+	if err := tt.Click("自动"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.Svc.Settings().Language; got != store.LanguageZH {
+		t.Errorf("failed locale lookup changed language setting to %q", got)
+	}
+	if English() {
+		t.Error("failed locale lookup changed the active language")
+	}
+	if !tt.HasText("locale unavailable") {
+		t.Fatalf("locale failure is not visible: %q", tt.Texts())
 	}
 }
 

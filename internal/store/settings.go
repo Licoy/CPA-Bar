@@ -69,8 +69,9 @@ const (
 
 // Language values.
 const (
-	LanguageZH = "zh-CN"
-	LanguageEN = "en"
+	LanguageAuto = "auto"
+	LanguageZH   = "zh-CN"
+	LanguageEN   = "en"
 )
 
 // Settings is everything CPA-Bar keeps on disk apart from secrets.
@@ -128,7 +129,7 @@ func Defaults() Settings {
 		Version:           SchemaVersion,
 		Instances:         []InstanceProfile{},
 		Appearance:        AppearanceSystem,
-		Language:          LanguageZH,
+		Language:          LanguageAuto,
 		BackgroundRefresh: 30,
 		ActiveRefresh:     10,
 		Notifications:     true,
@@ -147,7 +148,7 @@ func (s *Settings) Normalize() {
 	if s.Appearance != AppearanceLight && s.Appearance != AppearanceDark {
 		s.Appearance = d.Appearance
 	}
-	if s.Language != LanguageEN && s.Language != LanguageZH {
+	if s.Language != LanguageAuto && s.Language != LanguageEN && s.Language != LanguageZH {
 		s.Language = d.Language
 	}
 	if s.BackgroundRefresh < 10 {

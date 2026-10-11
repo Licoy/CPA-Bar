@@ -17,17 +17,20 @@ const UpdateInterval = 12 * time.Hour
 // releases in the background, shows the notes, and offers to install, to
 // be reminded later or to skip the version; it verifies the update's
 // signature before installing and relaunches only when the user agrees.
-// Call before App.Run.
+// Call after SetLanguage succeeds and before App.Run.
 func UseUpdater(st store.Settings) {
-	language := "zh-Hans"
-	if st.Language == store.LanguageEN {
-		language = "en"
-	}
 	mygo.Use(native.New(updater.Options{
 		Interval:               UpdateInterval,
 		DisableAutomaticChecks: !st.AutoCheckUpdates,
-		Language:               language,
+		Language:               updaterLanguage(),
 	}))
+}
+
+func updaterLanguage() string {
+	if English() {
+		return "en"
+	}
+	return "zh-Hans"
 }
 
 // CheckForUpdates checks now, as the user asked: the window says when the

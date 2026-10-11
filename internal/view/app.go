@@ -76,7 +76,6 @@ func NewApp(svc *core.Service) *App {
 		page:       "overview",
 	}
 	st := svc.Settings()
-	SetLanguage(st.Language)
 	SetPrivacy(st.Privacy)
 	setPrivacyHosts(st.Instances)
 	a.panelInstance = st.DefaultInstanceID
