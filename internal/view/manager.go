@@ -160,15 +160,15 @@ func (a *App) managerView(c *ui.Context) {
 	})
 }
 
-// sidebar lists the pages under the window controls, and the instance the
-// instance pages act on at its foot.
+// sidebar lists the pages clear of any left-side window controls, and the
+// instance the instance pages act on at its foot.
 func (a *App) sidebar(c *ui.Context, snaps []core.InstanceSnapshot) {
 	t := c.Theme()
-	// Room for the window controls, which full screen hides (the title
-	// bar is zero there): then only a margin.
+	// Reserve control space only when the platform places buttons on the
+	// left, including Linux desktops with left-side or split controls.
 	bar := c.TitleBar()
 	top := float32(14)
-	if bar.Height > 0 {
+	if bar.Left > 0 && bar.Height > 0 {
 		top = max(bar.Height, 52)
 	}
 	ui.Row(c).Height(top).DragWindow()
@@ -326,14 +326,11 @@ func (a *App) managerContent(c *ui.Context, snaps []core.InstanceSnapshot) {
 		}
 	})
 	if p.Instance && !found {
-		ui.Column(c).Grow(1).Children(func() {
-			EmptyState(c, T("请先添加实例", "Add an instance first"),
-				T("在“实例”页添加一个 CPA 服务后即可管理。", "Add a CPA server on the Instances page to manage it."))
-			ui.Row(c).Justify(ui.Center).Padding(0, 0, 48, 0).Children(func() {
-				if ui.PrimaryButton(c, T("添加实例", "Add Instance")).Clicked() {
-					a.page = "instances"
-				}
-			})
+		EmptyState(c, T("请先添加实例", "Add an instance first"),
+			T("在“实例”页添加一个 CPA 服务后即可管理。", "Add a CPA server on the Instances page to manage it.")).Children(func() {
+			if ui.PrimaryButton(c, T("添加实例", "Add Instance")).Margin(8, 0, 0, 0).Clicked() {
+				a.page = "instances"
+			}
 		})
 		return
 	}

@@ -66,10 +66,11 @@ func Notice(c *ui.Context, text string) {
 	})
 }
 
-// EmptyState fills a page or list with a message.
-func EmptyState(c *ui.Context, title, detail string) {
+// EmptyState fills a page or list with a message; children appended to the
+// returned column stay centered with it, for example an action button.
+func EmptyState(c *ui.Context, title, detail string) ui.Element {
 	t := c.Theme()
-	ui.Column(c).Grow(1).Center().Gap(8).Padding(32).Children(func() {
+	return ui.Column(c).Grow(1).Center().Gap(8).Padding(32).Children(func() {
 		Tile(c, icServer, TintGray, 44, false)
 		ui.Text(c, title).FontSize(16).FontWeight(600)
 		if detail != "" {

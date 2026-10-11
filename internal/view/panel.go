@@ -43,9 +43,8 @@ func (a *App) panelView(c *ui.Context) {
 		ui.Column(c).Grow(1).Padding(4, 14, 10, 14).Gap(10).Children(func() {
 			if len(snaps) == 0 {
 				EmptyState(c, T("还没有实例", "No instances yet"),
-					T("添加一个 CPA 服务的地址和管理密钥，即可在这里查看状态。", "Add a CPA server's address and management key to see its status here."))
-				ui.Row(c).Justify(ui.Center).Children(func() {
-					if ui.PrimaryButton(c, T("添加实例", "Add Instance")).Clicked() {
+					T("添加一个 CPA 服务的地址和管理密钥，即可在这里查看状态。", "Add a CPA server's address and management key to see its status here.")).Children(func() {
+					if ui.PrimaryButton(c, T("添加实例", "Add Instance")).Margin(8, 0, 0, 0).Clicked() {
 						a.OpenManager("instances")
 					}
 				})
@@ -132,15 +131,13 @@ func (a *App) panelAll(c *ui.Context, snaps []core.InstanceSnapshot, lists *pane
 			}).Children(func() {
 				instanceTile(c, s, 32, bg)
 				ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, s.Profile.Name).FontSize(14).FontWeight(600).SingleLine().Grow(1)
-						ui.Text(c, checkedLine(s, now)).FontSize(11).TextColor(t.TextMuted).SingleLine()
-					})
+					ui.Text(c, s.Profile.Name).FontSize(14).FontWeight(600).SingleLine()
 					ui.Text(c, accountsLine(s)).FontSize(12).TextColor(t.TextMuted).SingleLine()
 					if s.Err != nil {
 						ui.Text(c, ErrorText(s.Err)).FontSize(11).TextColor(ConnColor(t, s.Conn)).MaxLines(2)
 					}
 				})
+				ui.Text(c, checkedLine(s, now)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				Pill(c, ConnLabel(s.Conn), ConnColor(t, s.Conn))
 				ui.Icon(c, icChevron).FontSize(12).TextColor(t.TextMuted)
 			})
