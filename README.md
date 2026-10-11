@@ -139,6 +139,8 @@ Packaging signs with the identities named in `mygo.json`; on macOS, add `-sign -
 - [mygo](https://github.com/egoist/mygo): the Go framework for native desktop apps that CPA-Bar is built with.
 - [Remix Icon](https://remixicon.com/) (Apache License 2.0): the interface icons.
 - [LobeHub Icons](https://icons.lobehub.com/) (MIT License): the provider logos.
+- [GNOME](https://www.gnome.org/): Linux desktop integration.
+- [KDE](https://kde.org/): Linux desktop integration.
 
 ## Community support
 

@@ -18,12 +18,16 @@ const UpdateInterval = 12 * time.Hour
 // be reminded later or to skip the version; it verifies the update's
 // signature before installing and relaunches only when the user agrees.
 // Call after SetLanguage succeeds and before App.Run.
-func UseUpdater(st store.Settings) {
+func UseUpdater(st store.Settings) error {
+	if err := configureUpdaterHTTP(); err != nil {
+		return err
+	}
 	mygo.Use(native.New(updater.Options{
 		Interval:               UpdateInterval,
 		DisableAutomaticChecks: !st.AutoCheckUpdates,
 		Language:               updaterLanguage(),
 	}))
+	return nil
 }
 
 func updaterLanguage() string {

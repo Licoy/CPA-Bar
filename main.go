@@ -67,7 +67,9 @@ func main() {
 		log.Fatal("language: ", err)
 	}
 	view.ApplyAppearance(st.Appearance)
-	view.UseUpdater(st)
+	if err := view.UseUpdater(st); err != nil {
+		log.Fatal("updater: ", err)
+	}
 
 	ui := view.NewApp(svc)
 	notify = ui.Notify

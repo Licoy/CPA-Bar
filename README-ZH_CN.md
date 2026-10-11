@@ -139,6 +139,8 @@ go run github.com/egoist/mygo/cmd/mygo@v0.4.1 build -platform darwin/arm64
 - [mygo](https://github.com/egoist/mygo)：CPA-Bar 所使用的 Go 原生桌面应用框架。
 - [Remix Icon](https://remixicon.com/)（Apache License 2.0）：界面图标。
 - [LobeHub Icons](https://icons.lobehub.com/)（MIT License）：服务商标志。
+- [GNOME](https://www.gnome.org/)：Linux 桌面集成。
+- [KDE](https://kde.org/)：Linux 桌面集成。
 
 ## 社区支持
 
