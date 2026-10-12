@@ -54,6 +54,7 @@ func TestInstanceEditorAdvancedSettings(t *testing.T) {
 		CACertPEM: "PEM", ForwardAuthOnRedirect: true,
 	}}
 	tt := ui.NewTester(a.managerView, managerWidth, 1200)
+	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
 	if !st.editor.advanced || !st.editor.forwardAuthOnRedirect || st.editor.ca != "PEM" {
 		t.Fatalf("imported advanced settings not restored: %+v", st.editor)
 	}
@@ -63,16 +64,23 @@ func TestInstanceEditorAdvancedSettings(t *testing.T) {
 	if n := strings.Count(strings.Join(tt.Texts(), "\n"), "重定向时继续携带授权信息"); n < 2 {
 		t.Fatalf("redirect switch lacks a visible label: %q", tt.Texts())
 	}
-	st.editor.forwardAuthOnRedirect = false
-	tt.Frame()
-	if st.editor.forwardAuthOnRedirect {
-		t.Error("redirect authorization did not turn off")
+	if err := tt.Click("高级设置"); err != nil {
+		t.Fatal(err)
+	}
+	if st.editor.advanced || tt.HasText("包括其他域名") || tt.HasText("自定义 CA 证书") {
+		t.Fatalf("advanced settings did not collapse: %q", tt.Texts())
+	}
+	if got := st.editor.input().CACertPEM; got != "PEM" {
+		t.Errorf("collapsing advanced settings lost CA %q", got)
+	}
+	if !st.editor.input().ForwardAuthOnRedirect {
+		t.Error("collapsing advanced settings lost redirect authorization")
 	}
 	if err := tt.Click("高级设置"); err != nil {
 		t.Fatal(err)
 	}
-	if got := st.editor.input().CACertPEM; got != "PEM" {
-		t.Errorf("collapsing advanced settings lost CA %q", got)
+	if !st.editor.advanced || !tt.HasText("包括其他域名") || !tt.HasText("自定义 CA 证书") {
+		t.Fatalf("advanced settings did not expand: %q", tt.Texts())
 	}
 
 	e := editorFor(store.InstanceProfile{CACertPEM: "OTHER", ForwardAuthOnRedirect: true})

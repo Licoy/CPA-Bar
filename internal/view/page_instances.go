@@ -483,8 +483,13 @@ func instanceEditorFields(c *ui.Context, e *instanceEditor) {
 			ui.Text(c, warn).FontSize(12).TextColor(t.Warning)
 		}
 	}
-	ui.Checkbox(c.Key("adv"), &e.advanced, T("高级设置", "Advanced settings"))
-	if e.advanced {
+	advancedLabel := T("高级设置", "Advanced settings")
+	parts := ui.CollapsibleBase(c.Key("adv"), &e.advanced)
+	parts.Trigger.AlignItems(ui.Center).Gap(6).Padding(4, 0).Label(advancedLabel).Children(func() {
+		ui.Text(c, advancedLabel).FontWeight(600).Grow(1).Basis(0)
+		ui.Icon(c, icChevronDown).FontSize(14).TextColor(t.TextMuted).Rotate(-90 + 90*parts.Progress())
+	})
+	parts.Panel(func() {
 		forwardLabel := T("重定向时继续携带授权信息", "Keep authorization on redirects")
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, forwardLabel).Grow(1).Basis(0)
@@ -498,7 +503,7 @@ func instanceEditorFields(c *ui.Context, e *instanceEditor) {
 		ui.Text(c, T("自定义 CA 证书（自签名 HTTPS）", "Custom CA certificate (self-signed HTTPS)")).FontSize(12).FontWeight(600)
 		ui.TextArea(c.Key("ca"), &e.ca).Placeholder("-----BEGIN CERTIFICATE-----").Height(120).Font("monospace").FontSize(11)
 		ui.Text(c, T("证书校验始终开启；自定义 CA 只是额外信任此证书。", "Certificate verification always stays on; a custom CA is only trusted in addition.")).FontSize(11).TextColor(t.TextMuted)
-	}
+	}).Gap(8).Padding(8, 0, 0, 16)
 	ui.Text(c, T("密钥只保存在系统钥匙串中，不会写入配置文件或日志。", "The keys are kept only in the system credential store, never in files or logs.")).FontSize(11).TextColor(t.TextMuted)
 }
 
