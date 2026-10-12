@@ -299,6 +299,7 @@ func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credentia
 						if cr.AccountType != "" {
 							Pill(c.Key("type"), cr.AccountType, TintGray.Text(t))
 						}
+						env.App.quotaPlan(c, env.Snap, cr, env.Now)
 						if cr.RuntimeOnly {
 							Pill(c.Key("mem"), T("仅内存", "Memory only"), TintIndigo.Text(t)).
 								Tooltip(T("仅存在于服务器内存，不能在这里启停、删除或下载", "Exists only in server memory; it cannot be toggled, deleted or downloaded here"))
@@ -307,11 +308,15 @@ func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credentia
 					if sub := accountSubline(cr, h, env.Now); sub != "" {
 						ui.Text(c, sub).FontSize(11).TextColor(t.TextMuted).SingleLine()
 					}
-					if d := accountDetail(cr, h, env.Now); d != "" {
-						ui.Text(c, d).FontSize(11).TextColor(t.TextMuted).MaxLines(2)
+					// The times and the last day's usage share a line.
+					var detail []string
+					for _, s := range []string{accountDetail(cr, h, env.Now), env.App.usageAccountLine(env.InstanceID, cr.AuthIndex, env.Now)} {
+						if s != "" {
+							detail = append(detail, s)
+						}
 					}
-					if u := env.App.usageAccountLine(env.InstanceID, cr.AuthIndex, env.Now); u != "" {
-						ui.Text(c, u).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					if len(detail) > 0 {
+						ui.Text(c, strings.Join(detail, " · ")).FontSize(11).TextColor(t.TextMuted).MaxLines(2)
 					}
 					if cr.StatusMessage != "" {
 						ui.Text(c, PrivText(cr.StatusMessage)).FontSize(11).TextColor(col).MaxLines(3).Selectable()

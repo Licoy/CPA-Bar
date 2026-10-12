@@ -288,7 +288,15 @@ func quotaReset(at, now time.Time) string {
 	return at.Local().Format("01/02 15:04") + " · " + rel
 }
 
-// quotaView shows an account's quota: the plan and facts, each group of
+// quotaPlan shows an account's plan, once its quota is read, beside its
+// name; a long name gives way, not the plan.
+func (a *App) quotaPlan(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credential, now time.Time) {
+	if e, _, ok := a.quotaEntryFor(s, cr, now); ok && e.res != nil && e.res.Plan != "" {
+		Pill(c.Key("plan"), e.res.Plan, TintPurple.Text(c.Theme())).Shrink(0)
+	}
+}
+
+// quotaView shows an account's quota: the facts, each group of
 // limits with its bars, and the refresh and the provider's actions. cols
 // is how many limits share a line. It shows nothing for accounts without
 // a quota.
@@ -321,23 +329,23 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 		}
 	}
 	ui.Column(c.Key("quota")).Gap(8).Padding(8, 0, 0, 0).BorderWidth(1, 0, 0, 0).BorderColor(pal(t).Line).Children(func() {
-		// Header: plan, facts, refresh and actions.
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-			ui.Icon(c, icGauge).FontSize(12).TextColor(t.TextMuted)
-			ui.Text(c, T("额度", "Quota")).FontSize(12).FontWeight(600).TextColor(t.TextMuted).SingleLine()
-			if r != nil && r.Plan != "" {
-				Pill(c.Key("plan"), r.Plan, TintPurple.Text(t))
-			}
-			if r != nil {
-				for i, f := range r.Facts {
-					ui.Text(c.Key(fmt.Sprint("fact", i)), quotaText(f.Label)+" "+f.Value).FontSize(12).TextColor(t.TextMuted).SingleLine()
+		// Header: facts, refresh and actions. The plan sits beside the
+		// account's name (quotaPlan); in the panel, without facts, there is
+		// no header.
+		facts := r != nil && len(r.Facts) > 0
+		if facts || !compact {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				if facts {
+					for i, f := range r.Facts {
+						ui.Text(c.Key(fmt.Sprint("fact", i)), quotaText(f.Label)+" "+f.Value).FontSize(12).TextColor(t.TextMuted).SingleLine()
+					}
 				}
-			}
-			if !compact {
-				ui.Box(c).Grow(1)
-				buttons()
-			}
-		})
+				if !compact {
+					ui.Box(c).Grow(1)
+					buttons()
+				}
+			})
+		}
 
 		switch {
 		case r == nil && e.err != nil:

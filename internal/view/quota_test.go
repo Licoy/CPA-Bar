@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -132,6 +133,9 @@ func TestPanelShowsQuota(t *testing.T) {
 		if !tt.HasText(s) {
 			t.Errorf("panel lacks %q; texts: %q", s, tt.Texts())
 		}
+	}
+	if slices.Contains(tt.Texts(), "额度") {
+		t.Error("the panel titles the quota again")
 	}
 	found := false
 	for _, s := range tt.Texts() {

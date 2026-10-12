@@ -119,7 +119,7 @@ func (a *App) usageLine(c *ui.Context, id string, now time.Time) {
 	t := c.Theme()
 	st := a.Usage.Status(id)
 	s := d.sum
-	ui.Row(c.Key("usage-line")).Gap(8).AlignItems(ui.Center).Padding(8, 12).Radius(10).Background(pal(t).Card).Children(func() {
+	ui.Row(c.Key("usage-line")).Gap(8).AlignItems(ui.Center).Padding(6, 10).Radius(10).Background(pal(t).Card).Children(func() {
 		ui.Icon(c, icActivity).Size(14, 14).TextColor(t.TextMuted)
 		var text string
 		if s.Requests == 0 {

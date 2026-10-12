@@ -50,7 +50,7 @@ func (a *App) panelView(c *ui.Context) {
 	insets := panelContentInsets(a)
 	ui.Column(c).Fill().Background(t.Background).Padding(insets.top, insets.right, insets.bottom, insets.left).Children(func() {
 		a.panelTop(c, snaps)
-		ui.Column(c).Grow(1).Padding(4, 14, 10, 14).Gap(10).Children(func() {
+		ui.Column(c).Grow(1).Padding(2, 10, 8, 10).Gap(8).Children(func() {
 			if len(snaps) == 0 {
 				EmptyState(c, T("还没有实例", "No instances yet"),
 					T("添加一个 CPA 服务的地址和管理密钥，即可在这里查看状态。", "Add a CPA server's address and management key to see its status here.")).Children(func() {
@@ -75,7 +75,7 @@ func (a *App) panelView(c *ui.Context) {
 // instance to all, Refresh and the project's page.
 func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 	t := c.Theme()
-	ui.Row(c).Gap(8).Padding(12, 14, 8, 14).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(8).Padding(10, 10, 6, 10).AlignItems(ui.Center).Children(func() {
 		AppLogo(c, 28)
 		ui.Column(c).Grow(1).Basis(0).Gap(1).Padding(0, 0, 0, 2).Children(func() {
 			ui.Text(c, "CPA-Bar").FontSize(15).FontWeight(700).SingleLine()
@@ -114,13 +114,13 @@ func (a *App) panelAll(c *ui.Context, snaps []core.InstanceSnapshot, lists *pane
 		if o.Problem > 0 {
 			online = t.Danger
 		}
-		Stat(c, fmt.Sprintf("%d/%d", o.Online, o.Instances), T("在线实例", "Online"), online)
-		Stat(c, staleNum(o.Accounts.Available, o.Stale), T("可用账号", "Available accounts"), t.Text)
+		panelStat(c, fmt.Sprintf("%d/%d", o.Online, o.Instances), T("在线实例", "Online"), online)
+		panelStat(c, staleNum(o.Accounts.Available, o.Stale), T("可用账号", "Available accounts"), t.Text)
 		abn := t.Text
 		if o.Accounts.Abnormal() > 0 {
 			abn = t.Warning
 		}
-		Stat(c, staleNum(o.Accounts.Abnormal(), o.Stale), T("异常账号", "Abnormal accounts"), abn)
+		panelStat(c, staleNum(o.Accounts.Abnormal(), o.Stale), T("异常账号", "Abnormal accounts"), abn)
 	})
 	if o.Stale {
 		Notice(c, T("带 * 的数字含有过期数据：部分实例最近一次刷新失败。", "Numbers marked * include stale data: some instances failed their last refresh."))
@@ -131,7 +131,7 @@ func (a *App) panelAll(c *ui.Context, snaps []core.InstanceSnapshot, lists *pane
 	ui.List(c, &lists.instances, len(snaps), func(i int) {
 		s := snaps[i]
 		ui.Column(c).Padding(0, 0, 6, 0).Children(func() {
-			row := ui.Row(c).Padding(10, 12).Gap(10).Radius(12).AlignItems(ui.Center)
+			row := ui.Row(c).Padding(8, 10).Gap(10).Radius(12).AlignItems(ui.Center)
 			bg := pal(t).Card
 			if row.Hovered() {
 				bg = bg.Mix(t.Text, 0.05)
@@ -156,18 +156,23 @@ func (a *App) panelAll(c *ui.Context, snaps []core.InstanceSnapshot, lists *pane
 	}).Grow(1)
 }
 
+// panelStat is a Stat with the panel's tighter padding.
+func panelStat(c *ui.Context, value, caption string, col ui.Color) {
+	Stat(c, value, caption, col).Padding(9, 12).Gap(2)
+}
+
 // panelOne shows one instance's accounts, with a switch for each.
 func (a *App) panelOne(c *ui.Context, s core.InstanceSnapshot, lists *panelList) {
 	t := c.Theme()
 	now := c.Now()
 	ui.Row(c).Gap(8).Children(func() {
-		Stat(c, ConnLabel(s.Conn), checkedLine(s, now), ConnColor(t, s.Conn))
-		Stat(c, staleNumIf(s.Accounts.Available, s), T("可用账号", "Available"), t.Text)
+		panelStat(c, ConnLabel(s.Conn), checkedLine(s, now), ConnColor(t, s.Conn))
+		panelStat(c, staleNumIf(s.Accounts.Available, s), T("可用账号", "Available"), t.Text)
 		abn := t.Text
 		if s.Accounts.Abnormal() > 0 {
 			abn = t.Warning
 		}
-		Stat(c, staleNumIf(s.Accounts.Abnormal(), s), T("异常账号", "Abnormal"), abn)
+		panelStat(c, staleNumIf(s.Accounts.Abnormal(), s), T("异常账号", "Abnormal"), abn)
 	})
 	a.usageLine(c, s.Profile.ID, now)
 	ErrorBanner(c, s.Err)
@@ -212,7 +217,7 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 		task = &Task{}
 		a.panelCreds[key] = task
 	}
-	ui.Column(c).Padding(7, 12).Gap(3).Children(func() {
+	ui.Column(c).Padding(6, 10).Gap(3).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			credTile(c, cr, 26, pal(t).Card)
 			ui.Column(c).Grow(1).Gap(1).Children(func() {
@@ -221,12 +226,17 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 					if s.Profile.Pinned(credFileName(cr)) {
 						ui.Icon(c, icPinned).FontSize(11).TextColor(t.Accent).Label(T("已置顶", "Pinned")).Tooltip(T("已置顶", "Pinned"))
 					}
+					a.quotaPlan(c, s, cr, now)
 				})
-				sub := providerLabel(cr.ProviderName()) + " · " + HealthLabel(h)
-				if h == cpa.HealthCooling {
-					sub += " · " + Until(*cr.NextRetryAfter, now)
+				// The logo says the provider and the switch whether the
+				// account is on: only trouble needs words.
+				if h != cpa.HealthAvailable && h != cpa.HealthDisabled {
+					sub := HealthLabel(h)
+					if h == cpa.HealthCooling {
+						sub += " · " + Until(*cr.NextRetryAfter, now)
+					}
+					ui.Text(c, sub).FontSize(11).TextColor(HealthColor(t, h)).SingleLine()
 				}
-				ui.Text(c, sub).FontSize(11).TextColor(HealthColor(t, h)).SingleLine()
 			})
 			if task.Running {
 				ui.Spinner(c).Label(T("正在提交", "Saving"))
@@ -241,18 +251,19 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 			}
 		})
 		if cr.StatusMessage != "" && h != cpa.HealthAvailable && h != cpa.HealthDisabled {
-			ui.Text(c, PrivText(cr.StatusMessage)).FontSize(11).TextColor(t.TextMuted).MaxLines(2).Selectable().Padding(0, 0, 0, 36)
+			ui.Text(c, PrivText(cr.StatusMessage)).FontSize(11).TextColor(t.TextMuted).MaxLines(2).Selectable()
 		}
 		if task.Err != nil {
-			ui.Text(c, ErrorText(task.Err)).FontSize(11).TextColor(t.Danger).MaxLines(3).Selectable().Padding(0, 0, 0, 36)
+			ui.Text(c, ErrorText(task.Err)).FontSize(11).TextColor(t.Danger).MaxLines(3).Selectable()
 		}
-		ui.Column(c).Padding(0, 0, 0, 36).Children(func() { a.quotaView(c, s, cr, now, 2) })
+		// Room above the quota's rule, as much as under it.
+		ui.Column(c).Padding(5, 0, 0, 0).Children(func() { a.quotaView(c, s, cr, now, 2) })
 	})
 }
 
 func (a *App) panelFooter(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).Gap(6).Padding(10, 14).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(pal(t).Line).Children(func() {
+	ui.Row(c).Gap(6).Padding(8, 10).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(pal(t).Line).Children(func() {
 		if PillButton(c, icPlus, T("添加实例", "Add"), false).Clicked() {
 			a.OpenManager("instances")
 		}
