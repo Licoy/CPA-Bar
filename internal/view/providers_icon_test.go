@@ -69,3 +69,25 @@ func TestPanelBackAndGitHub(t *testing.T) {
 		t.Errorf("opened %q", got)
 	}
 }
+
+// Inside an instance, the star makes it the default instance and, lit,
+// stops it being the default.
+func TestPanelDefaultInstance(t *testing.T) {
+	a, id := newTestApp(t, true)
+	a.panelInstance = id
+	tt := ui.NewTester(a.panelView, panelWidth, panelHeight)
+	if err := tt.Click("设为默认实例：打开面板时直接显示，菜单栏进度条也取自它"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.Svc.Settings().DefaultInstanceID != id {
+		t.Fatalf("default %q", a.Svc.Settings().DefaultInstanceID)
+	}
+	if err := tt.Click("默认实例，点击取消"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.Svc.Settings().DefaultInstanceID != "" {
+		t.Errorf("default %q after unsetting", a.Svc.Settings().DefaultInstanceID)
+	}
+}

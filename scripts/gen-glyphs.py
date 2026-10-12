@@ -83,6 +83,7 @@ REMIX = {
     "icRobot": "robot-2-line",
     "icRocket": "rocket-line",
     "icStar": "star-line",
+    "icStarFill": "star-fill",
     "icSun": "sun-line",
     "icTerminal": "terminal-box-line",
     "cfgIcDiff": "git-pull-request-line",

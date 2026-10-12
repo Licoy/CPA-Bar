@@ -88,11 +88,14 @@ func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 		refreshing := slices.ContainsFunc(snaps, func(s core.InstanceSnapshot) bool {
 			return instanceBusy(s) && (a.panelInstance == "" || s.Profile.ID == a.panelInstance)
 		})
-		if a.panelInstance != "" && PillButton(c, icBack, T("返回", "Back"), false).Tooltip(T("返回全部实例", "Back to all instances")).Clicked() {
+		if a.panelInstance != "" && PillButton(c, icBack, "", false).Label(T("返回", "Back")).Tooltip(T("返回全部实例", "Back to all instances")).Clicked() {
 			a.panelInstance = ""
 			a.syncActive()
 		}
-		if len(snaps) > 0 && BusyPillButton(c, icRefresh, T("刷新", "Refresh"), refreshing, false).Tooltip(T("立即刷新", "Refresh now")).Clicked() {
+		if a.panelInstance != "" {
+			a.defaultButton(c, a.panelInstance)
+		}
+		if len(snaps) > 0 && BusyPillButton(c, icRefresh, "", refreshing, false).Label(T("刷新", "Refresh")).Tooltip(T("立即刷新", "Refresh now")).Clicked() {
 			if a.panelInstance == "" {
 				a.Svc.RefreshAll()
 			} else {
@@ -103,6 +106,25 @@ func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 			c.OpenURL(RepoURL)
 		}
 	})
+}
+
+// defaultButton makes the instance the default one, which the panel opens
+// on and the menu bar's bars show, or stops it being the default.
+func (a *App) defaultButton(c *ui.Context, id string) {
+	on := a.Svc.Settings().DefaultInstanceID == id
+	label := T("设为默认实例：打开面板时直接显示，菜单栏进度条也取自它", "Make default: the panel opens on it, and the menu bar's bars show it")
+	if on {
+		label = T("默认实例，点击取消", "The default instance; click to unset")
+	}
+	if ToggleIconButton(c, icStar, icStarFill, on).Label(label).Tooltip(label).Clicked() {
+		next := id
+		if on {
+			next = ""
+		}
+		if err := a.Svc.SetDefaultInstance(next); err != nil {
+			c.Toast(ErrorText(err))
+		}
+	}
 }
 
 // panelAll shows every instance with its state.

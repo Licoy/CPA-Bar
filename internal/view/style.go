@@ -310,17 +310,26 @@ func Pill(c *ui.Context, text string, col ui.Color) ui.Element {
 // PillButton is a capsule button with an icon, for the toolbars of
 // headers and cards. A disabled one reports no clicks.
 func PillButton(c *ui.Context, icon *ui.SVG, label string, disabled bool) ui.Element {
-	return pillButton(c, icon, label, disabled, false)
+	return pillButton(c, icon, label, disabled, false, false)
+}
+
+// ToggleIconButton is an icon-only PillButton for a state: when on it
+// shows onIcon in the accent color, on an accent tint. Name it with Label.
+func ToggleIconButton(c *ui.Context, icon, onIcon *ui.SVG, on bool) ui.Element {
+	if on {
+		icon = onIcon
+	}
+	return pillButton(c, icon, "", false, false, on)
 }
 
 // BusyPillButton is a PillButton for work that takes a while, as a
 // refresh: while busy it is disabled and its icon turns, the refresh icon
 // itself and any other a spinner, instead of a spinner beside it.
 func BusyPillButton(c *ui.Context, icon *ui.SVG, label string, busy, disabled bool) ui.Element {
-	return pillButton(c, icon, label, disabled || busy, busy)
+	return pillButton(c, icon, label, disabled || busy, busy, false)
 }
 
-func pillButton(c *ui.Context, icon *ui.SVG, label string, disabled, busy bool) ui.Element {
+func pillButton(c *ui.Context, icon *ui.SVG, label string, disabled, busy, on bool) ui.Element {
 	t := c.Theme()
 	b := ui.ButtonBase(c).Label(label).Disabled(disabled).Padding(6, 12).Gap(6).Radius(999).AlignItems(ui.Center)
 	if label == "" {
@@ -334,12 +343,17 @@ func pillButton(c *ui.Context, icon *ui.SVG, label string, disabled, busy bool) 
 		bg = t.Text.Alpha(0.14)
 	case b.Hovered():
 		bg = t.Text.Alpha(0.10)
+	case on:
+		bg = t.Accent.Alpha(0.12)
 	}
 	b.Background(bg)
 	return b.Children(func() {
 		col := t.Text
-		if disabled {
+		switch {
+		case disabled:
 			col = t.TextMuted
+		case on:
+			col = t.Accent
 		}
 		switch {
 		case busy && icon == icRefresh:
