@@ -1,10 +1,12 @@
 #!/bin/sh
-# Renders the app icon and the tray icons from the logo SVGs in resources/.
+# Renders the app icon and the tray icons from the logo SVGs in branding/.
 # Needs ImageMagick 7 (magick). Run from anywhere; the outputs are committed.
+# The sources stay out of resources/: mygo ships everything there with every
+# package, while the app only needs the icon (mygo.json) and the embedded assets.
 #
-#   resources/icon.png                  the app icon (mygo.json), 1024 px
-#   resources/cpa-bar-elephant-color.png transparent color logo, 1254 px
-#   resources/cpa-bar-elephant-05-large-v1.png color logo on a pale blue background
+#   branding/icon.png                   the app icon (mygo.json), 1024 px
+#   branding/cpa-bar-elephant-color.png transparent color logo, 1254 px
+#   branding/cpa-bar-elephant-05-large-v1.png color logo on a pale blue background
 #   internal/view/assets/logo.svg       the logo in the app (About)
 #   internal/view/assets/app-512.png    the window and Dock icon at run time
 #   internal/view/assets/tray-*.png     the tray icons: color and mono, at
@@ -12,7 +14,7 @@
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-res="$root/resources"
+res="$root/branding"
 out="$root/internal/view/assets"
 mkdir -p "$out"
 tmp=$(mktemp -d)

@@ -10,7 +10,7 @@ import (
 )
 
 // The tray icons and the app icon, rendered from the logo SVGs in
-// resources/ by scripts/gen-icons.sh.
+// branding/ by scripts/gen-icons.sh.
 var (
 	//go:embed assets/tray-color-36.png
 	trayColor36 []byte

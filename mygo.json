@@ -3,7 +3,7 @@
   "identifier": "com.github.licoy.cpabar",
   "version": "1.0.6",
   "copyright": "Copyright (c) 2026 Licoy",
-  "icon": "resources/icon.png",
+  "icon": "branding/icon.png",
   "out": "build",
   "updates": {
     "publicKey": "gg+0NA/457LE4kxQ/0vY8t1VRN7dP74soXyNQ9dDyeY=",

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="resources/icon.png" width="128" height="128" alt="CPA-Bar 标志">
+  <img src="branding/icon.png" width="128" height="128" alt="CPA-Bar 标志">
 </p>
 
 <h1 align="center">CPA-Bar</h1>

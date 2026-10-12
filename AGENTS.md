@@ -36,4 +36,9 @@
 
 ### 应用标志
 
-- 应用标志、托盘图标和 Dock 图标来自 `resources/` 下的 SVG，由 `scripts/gen-icons.sh` 渲染，不属于上面两类。
+- 应用标志、托盘图标和 Dock 图标来自 `branding/` 下的 SVG，由 `scripts/gen-icons.sh` 渲染，不属于上面两类。
+
+## 产出包
+
+- mygo 会把根目录 `resources/` 中的所有文件原样打进每个平台的产出包（Windows 放在 exe 旁边，macOS 放在 `Contents/Resources`，Linux 进入 .deb 和 tar.gz）。只有程序运行时通过 `mygo.PathResources` 读取的文件才能放进 `resources/`；标志源文件、设计稿等放在 `branding/` 或其他目录。
+- 界面里用到的图片用 `go:embed` 嵌入二进制，不要放进 `resources/`。
