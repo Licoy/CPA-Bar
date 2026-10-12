@@ -321,6 +321,46 @@ jobs:
           [ "$fail" = 0 ] || exit 1
           echo "All platform assets and manifests are on the draft."
 
+      - name: Check that the update archives hold only the app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # mygo ships every file of resources/ with every package, next to the
+          # executable or in Contents/Resources. The installers pack the same
+          # files as these archives, so nothing beyond the app may be in them.
+          norm() { tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g'; }
+          fetch() { # fetch <asset name> <path>
+            local api
+            api="$(jq -r --arg n "$1" '.assets[] | select(.name == $n) | .apiUrl' release.json)"
+            gh api -H "Accept: application/octet-stream" "$api" > "$2"
+          }
+
+          fail=0
+          for t in darwin-arm64 darwin-amd64 windows-amd64 windows-arm64 linux-amd64 linux-arm64; do
+            url="$(jq -r .url "manifests/update-$t.json")"
+            base="$(basename "${url%%\?*}" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))' | norm)"
+            name="$(awk -F'\t' -v b="$base" '$1 == b { print $2 }' assets.tsv)"
+            fetch "$name" "archive-$t.tar.gz"
+            tar -tzf "archive-$t.tar.gz" | sed -E 's#^\./##; s#/+$##' | grep -v '^$' > "archive-$t.txt"
+            case "$t" in
+              darwin-*) want="CPA-Bar.app" ;;
+              windows-*) want="CPA-Bar.exe" ;;
+              linux-*) want=$'cpa-bar\ncpa-bar.desktop\ncpa-bar.png' ;;
+            esac
+            got="$(cut -d/ -f1 "archive-$t.txt" | sort -u)"
+            if [ "$got" != "$(printf '%s\n' "$want" | sort)" ]; then
+              echo "::error::$name holds: $(echo $got); expected only: $(echo $want)"
+              fail=1
+            fi
+            if extra="$(grep -E '^CPA-Bar\.app/Contents/Resources/.' "archive-$t.txt" | grep -vFx 'CPA-Bar.app/Contents/Resources/AppIcon.icns')"; then
+              echo "::error::$name has files in Contents/Resources besides AppIcon.icns: $(echo $extra)"
+              fail=1
+            fi
+          done
+          [ "$fail" = 0 ] || exit 1
+          echo "Every update archive holds only the app."
+
       - name: Add release notes to update manifests
         env:
           GH_TOKEN: ${{ github.token }}
