@@ -53,6 +53,8 @@ REMIX = {
     "icMore": "more-fill",
     "icPanel": "layout-left-line",
     "icPause": "pause-line",
+    "icPin": "pushpin-line",
+    "icPinned": "pushpin-fill",
     "icPlug": "plug-line",
     "icPlus": "add-line",
     "icPuzzle": "puzzle-line",
@@ -61,6 +63,7 @@ REMIX = {
     "icServer": "server-line",
     "icTag": "price-tag-3-line",
     "icTrash": "delete-bin-line",
+    "icUnpin": "unpin-line",
     "icUsers": "group-line",
     "icX": "close-line",
     # Instance marks, which the instance editor offers.

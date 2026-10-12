@@ -38,9 +38,13 @@ type InstanceProfile struct {
 	// Flavor is FlavorManagerPlus when CPA-Manager-Plus collects the
 	// instance's usage, at ManagerURL; its admin key is in the credential
 	// store under ManagerKeyID(ID).
-	Flavor     string    `json:"flavor,omitempty"`
-	ManagerURL string    `json:"managerUrl,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	Flavor     string `json:"flavor,omitempty"`
+	ManagerURL string `json:"managerUrl,omitempty"`
+	// PinnedAccounts are the accounts the user put at the top of the
+	// instance's lists, by the name the server knows them by, in the order
+	// they were pinned. Pins are local: the server knows nothing of them.
+	PinnedAccounts []string  `json:"pinnedAccounts,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 // Flavors of an instance.
@@ -54,6 +58,11 @@ const (
 // ManagerPlus reports whether the usage is read from CPA-Manager-Plus.
 func (p InstanceProfile) ManagerPlus() bool {
 	return p.Flavor == FlavorManagerPlus && p.ManagerURL != ""
+}
+
+// Pinned reports whether the account named name is pinned.
+func (p InstanceProfile) Pinned(name string) bool {
+	return name != "" && slices.Contains(p.PinnedAccounts, name)
 }
 
 // ManagerKeyID is the credential store entry of the CPA-Manager-Plus admin
@@ -182,6 +191,9 @@ func (s *Settings) Instance(id string) *InstanceProfile {
 // Clone returns a deep copy.
 func (s Settings) Clone() Settings {
 	s.Instances = slices.Clone(s.Instances)
+	for i := range s.Instances {
+		s.Instances[i].PinnedAccounts = slices.Clone(s.Instances[i].PinnedAccounts)
+	}
 	return s
 }
 

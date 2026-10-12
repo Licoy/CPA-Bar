@@ -929,3 +929,79 @@ func checkPrivate(t *testing.T, path string) {
 		t.Errorf("%s has mode %v, want owner-only", path, fi.Mode().Perm())
 	}
 }
+
+func TestPinnedFirst(t *testing.T) {
+	creds := []cpa.Credential{{Name: "a"}, {Name: "b"}, {Name: "c"}, {ID: "d"}}
+	names := func(cs []cpa.Credential) []string {
+		var out []string
+		for _, c := range cs {
+			out = append(out, credFileName(c))
+		}
+		return out
+	}
+	if got := names(pinnedFirst(creds, nil)); !slices.Equal(got, []string{"a", "b", "c", "d"}) {
+		t.Errorf("no pins = %v", got)
+	}
+	// Pinned in the order they were pinned; a pin of a gone account is
+	// ignored; the rest keep their order.
+	if got := names(pinnedFirst(creds, []string{"d", "gone", "b"})); !slices.Equal(got, []string{"d", "b", "a", "c"}) {
+		t.Errorf("pinned = %v", got)
+	}
+	if got := names(creds); !slices.Equal(got, []string{"a", "b", "c", "d"}) {
+		t.Errorf("input reordered: %v", got)
+	}
+}
+
+func TestAccountsPinToTop(t *testing.T) {
+	tt, a, id, _, _ := accountsTester(t, "accounts")
+	above := func(tt *ui.Tester, x, y string) bool {
+		rx, okx := tt.Find(x)
+		ry, oky := tt.Find(y)
+		return okx && oky && rx.Y < ry.Y
+	}
+	if !above(tt, "cool@example.com", "off@example.com") {
+		t.Fatalf("unpinned order: %q", tt.Texts())
+	}
+
+	// The pin of the first row, the cooling account, pins it.
+	if err := tt.Click("置顶"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.Svc.Settings().Instances[0].PinnedAccounts; !slices.Equal(got, []string{"b.json"}) {
+		t.Fatalf("pinned = %v", got)
+	}
+
+	// A pinned account comes first in the accounts list and the panel.
+	if err := a.Svc.SetCredentialPinned(id, "c.json", true); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !above(tt, "cool@example.com", "off@example.com") || !above(tt, "off@example.com", "ok@example.com") {
+		t.Errorf("pinned order: %q", tt.Texts())
+	}
+	a.panelInstance = id
+	pt := ui.NewTester(a.panelView, panelWidth, panelHeight)
+	if !above(pt, "cool@example.com", "off@example.com") || !above(pt, "off@example.com", "ok@example.com") {
+		t.Errorf("panel order: %q", pt.Texts())
+	}
+	if _, ok := pt.Find("已置顶"); !ok {
+		t.Errorf("panel does not mark pinned accounts: %q", pt.Texts())
+	}
+
+	// Unpinning puts it back in its place.
+	if err := tt.Click("取消置顶"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := a.Svc.Settings().Instances[0].PinnedAccounts; !slices.Equal(got, []string{"c.json"}) {
+		t.Fatalf("pinned after unpin = %v", got)
+	}
+	if err := a.Svc.SetCredentialPinned(id, "c.json", false); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !above(tt, "ok@example.com", "off@example.com") {
+		t.Errorf("unpinned order: %q", tt.Texts())
+	}
+}

@@ -779,6 +779,7 @@ func (s *Service) UpdateInstance(id string, input InstanceInput) error {
 	}
 	old := in.profile
 	p.Order, p.Paused, p.CreatedAt = old.Order, old.Paused, old.CreatedAt
+	p.PinnedAccounts = old.PinnedAccounts
 	s.mu.Unlock()
 
 	if p.ManagerPlus() && strings.TrimSpace(input.ManagerKey) == "" {
@@ -960,6 +961,37 @@ func (s *Service) SetPaused(id string, paused bool) error {
 	if !paused {
 		s.refresh(id, true)
 	}
+	return nil
+}
+
+// SetCredentialPinned pins the account named name (its file name on the
+// server) to the top of the instance's lists, after those pinned before
+// it, or unpins it.
+func (s *Service) SetCredentialPinned(id, name string, pinned bool) error {
+	s.mu.Lock()
+	in := s.inst[id]
+	if in == nil {
+		s.mu.Unlock()
+		return ErrNoInstance
+	}
+	next := s.settings.Clone()
+	p := next.Instance(id)
+	if name == "" || p.Pinned(name) == pinned {
+		s.mu.Unlock()
+		return nil
+	}
+	p.PinnedAccounts = slices.DeleteFunc(p.PinnedAccounts, func(n string) bool { return n == name })
+	if pinned {
+		p.PinnedAccounts = append(p.PinnedAccounts, name)
+	}
+	if err := s.saveLocked(next); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	in.profile.PinnedAccounts = p.PinnedAccounts
+	in.snap.Profile.PinnedAccounts = p.PinnedAccounts
+	s.mu.Unlock()
+	s.notify()
 	return nil
 }
 

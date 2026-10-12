@@ -191,7 +191,7 @@ func accountsPage(c *ui.Context, env *PageEnv) {
 			provider = p
 		}
 	}
-	rows := sortedForPanel(filterCredentials(snap.Credentials, st.search, provider, st.health))
+	rows := pinnedFirst(sortedForPanel(filterCredentials(snap.Credentials, st.search, provider, st.health)), snap.Profile.PinnedAccounts)
 	st.pruneSelection(snap.Credentials)
 
 	// Selection and bulk delete.
@@ -335,6 +335,12 @@ func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credentia
 
 				if PillButton(c.Key("edit"), nil, T("编辑", "Edit"), !canWrite || busy || cr.RuntimeOnly).Clicked() {
 					st.edit = newAccountEdit(cr)
+				}
+				pinned := env.Snap.Profile.Pinned(credFileName(cr))
+				if pinButton(c, pinned).Clicked() {
+					if err := env.App.Svc.SetCredentialPinned(env.InstanceID, credFileName(cr), !pinned); err != nil {
+						task.Err = err
+					}
 				}
 				accountMenu(c, env, st, cr, task, canWrite, fresh)
 			})
@@ -645,6 +651,9 @@ func deleteAccounts(env *PageEnv, st *accountsState, ask deleteAsk) {
 		if err == nil {
 			for _, k := range ask.keys {
 				delete(st.selected, k)
+			}
+			for _, n := range ask.names {
+				_ = svc.SetCredentialPinned(id, n, false)
 			}
 		}
 	})

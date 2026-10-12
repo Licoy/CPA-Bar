@@ -27,6 +27,29 @@ func moreButton(c *ui.Context, label string, build func(m *ui.Menu)) ui.Element 
 	}).Menu(build)
 }
 
+// pinButton pins an account to the top of the lists, or unpins it. A
+// pinned account's pin is filled, in the accent color.
+func pinButton(c *ui.Context, pinned bool) ui.Element {
+	t := c.Theme()
+	label, icon, col := T("置顶", "Pin to Top"), icPin, t.Text
+	if pinned {
+		label, icon, col = T("取消置顶", "Unpin"), icPinned, t.Accent
+	}
+	b := ui.ButtonBase(c.Key("pin")).Label(label).Tooltip(label).Size(30, 30).Radius(999).Justify(ui.Center).AlignItems(ui.Center)
+	bg := t.Text.Alpha(0.06)
+	switch {
+	case b.Pressed():
+		bg = t.Text.Alpha(0.14)
+	case b.Hovered():
+		bg = t.Text.Alpha(0.10)
+	case pinned:
+		bg = t.Accent.Alpha(0.12)
+	}
+	return b.Background(bg).Children(func() {
+		ui.Icon(c, icon).FontSize(14).TextColor(col)
+	})
+}
+
 // ---- Editing an account ----
 
 // headerRow is a custom request header being edited.

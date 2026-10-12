@@ -191,7 +191,7 @@ func (a *App) panelOne(c *ui.Context, s core.InstanceSnapshot, lists *panelList)
 		}
 		return
 	}
-	creds := sortedForPanel(s.Credentials)
+	creds := pinnedFirst(sortedForPanel(s.Credentials), s.Profile.PinnedAccounts)
 	if len(creds) == 0 {
 		EmptyState(c, T("没有账号", "No accounts"), T("这个实例还没有认证文件。", "This instance has no credentials yet."))
 		return
@@ -215,7 +215,12 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			credTile(c, cr, 26, pal(t).Card)
 			ui.Column(c).Grow(1).Gap(1).Children(func() {
-				ui.Text(c, PrivName(cr.DisplayName())).SingleLine().FontSize(13).FontWeight(500)
+				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, PrivName(cr.DisplayName())).SingleLine().FontSize(13).FontWeight(500)
+					if s.Profile.Pinned(credFileName(cr)) {
+						ui.Icon(c, icPinned).FontSize(11).TextColor(t.Accent).Label(T("已置顶", "Pinned")).Tooltip(T("已置顶", "Pinned"))
+					}
+				})
 				sub := providerLabel(cr.ProviderName()) + " · " + HealthLabel(h)
 				if h == cpa.HealthCooling {
 					sub += " · " + Until(*cr.NextRetryAfter, now)
@@ -292,6 +297,23 @@ func sortedForPanel(creds []cpa.Credential) []cpa.Credential {
 	}
 	out := slices.Clone(creds)
 	slices.SortStableFunc(out, func(x, y cpa.Credential) int { return rank(x.Health()) - rank(y.Health()) })
+	return out
+}
+
+// pinnedFirst puts the pinned accounts first, in the order they were
+// pinned, and keeps the order of the others.
+func pinnedFirst(creds []cpa.Credential, pins []string) []cpa.Credential {
+	if len(pins) == 0 {
+		return creds
+	}
+	rank := func(cr cpa.Credential) int {
+		if i := slices.Index(pins, credFileName(cr)); i >= 0 {
+			return i
+		}
+		return len(pins)
+	}
+	out := slices.Clone(creds)
+	slices.SortStableFunc(out, func(x, y cpa.Credential) int { return rank(x) - rank(y) })
 	return out
 }
 

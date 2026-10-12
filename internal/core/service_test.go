@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1722,5 +1723,42 @@ func TestNewInstanceIDIsUnique(t *testing.T) {
 			t.Fatalf("id %q (len %d) repeated or malformed", id, len(id))
 		}
 		seen[id] = true
+	}
+}
+
+func TestSetCredentialPinned(t *testing.T) {
+	f := newFakeCPA(t, "k", cred("a.json", "active"), cred("b.json", "active"))
+	e := newEnv(t, f)
+	e.refresh("i0")
+
+	for _, name := range []string{"b.json", "a.json", "b.json"} {
+		if err := e.svc.SetCredentialPinned("i0", name, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := e.snap("i0").Profile.PinnedAccounts; !slices.Equal(got, []string{"b.json", "a.json"}) {
+		t.Errorf("pinned = %v", got)
+	}
+	if err := e.svc.SetCredentialPinned("i0", "b.json", false); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := e.set.snapshot(); !slices.Equal(st.Instances[0].PinnedAccounts, []string{"a.json"}) {
+		t.Errorf("saved = %v", st.Instances[0].PinnedAccounts)
+	}
+
+	// Editing the instance keeps its pins.
+	if err := e.svc.UpdateInstance("i0", InstanceInput{Name: "Renamed", Address: f.srv.URL}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.snap("i0").Profile.PinnedAccounts; !slices.Equal(got, []string{"a.json"}) {
+		t.Errorf("pins after edit = %v", got)
+	}
+
+	if err := e.svc.SetCredentialPinned("nope", "a.json", true); !errors.Is(err, ErrNoInstance) {
+		t.Errorf("unknown instance: %v", err)
+	}
+	e.set.setErr(errBoom)
+	if err := e.svc.SetCredentialPinned("i0", "b.json", true); !errors.Is(err, errBoom) || e.snap("i0").Profile.Pinned("b.json") {
+		t.Errorf("failed save must not pin: %v", err)
 	}
 }
