@@ -208,7 +208,7 @@ func levelColor(p int) color.NRGBA {
 func barsIcon(gs []trayGauge) []byte {
 	const (
 		width = 36.0
-		barH  = 4.0
+		barH  = 5.0
 		// pitch is the distance between the lines of the title.
 		pitch = 10.0
 	)

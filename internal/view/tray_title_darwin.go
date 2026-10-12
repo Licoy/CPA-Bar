@@ -24,7 +24,7 @@ func setTrayLines(tray *mygo.Tray, lines []string) {
 		pool := objc.ID(objc.GetClass("NSAutoreleasePool")).Send(objc.RegisterName("new"))
 		defer pool.Send(objc.RegisterName("drain"))
 
-		const size, lineHeight = 9.5, 10.0
+		const size, lineHeight = 9.0, 10.0
 		para := objc.ID(objc.GetClass("NSMutableParagraphStyle")).Send(objc.RegisterName("new"))
 		defer para.Send(objc.RegisterName("release"))
 		para.Send(objc.RegisterName("setMinimumLineHeight:"), float64(lineHeight))
