@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/licoy/cpa-bar/internal/cpa"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -133,22 +134,25 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 		})
 		if mygoTrayTitleSupported() {
 			row(T("菜单栏样式", "Menu bar style"), trayStyleDetail(cur.TrayStyle), func() {
-				styles := []string{store.TrayStyleIcon, store.TrayStyleBattery, store.TrayStyleBars}
+				styles := []string{store.TrayStyleIcon, store.TrayStyleBars}
 				i := max(0, indexOf(styles, cur.TrayStyle))
-				if PillTabs(c.Key("traystyle"), &i, T("图标", "Icon"), T("电池", "Batteries"), T("进度条", "Bars")) {
+				if PillTabs(c.Key("traystyle"), &i, T("图标", "Icon"), T("进度条", "Bars")) {
 					style := styles[i]
 					save(func(s *store.Settings) { s.TrayStyle = style })
 					a.changed()
 				}
 			})
-			if cur.TrayStyle == store.TrayStyleIcon {
-				row(T("菜单栏文字", "Menu bar text"), T("在图标旁显示“3/4”（在线实例/实例总数）", "Show “3/4” (online/all instances) next to the icon"), func() {
+			switch cur.TrayStyle {
+			case store.TrayStyleIcon:
+				row(T("显示在线实例数", "Show instances online"), T("在图标旁显示“3/4”（在线实例/实例总数）", "Show “3/4” (online/all instances) next to the icon"), func() {
 					on := cur.TrayText
-					if ui.Switch(c.Key("traytext"), &on).Label(T("菜单栏文字", "Menu bar text")).Changed() {
+					if ui.Switch(c.Key("traytext"), &on).Label(T("显示在线实例数", "Show instances online")).Changed() {
 						save(func(s *store.Settings) { s.TrayText = on })
 						a.changed()
 					}
 				})
+			case store.TrayStyleBars:
+				trayAccountsRow(c, a, row)
 			}
 		}
 	})
@@ -283,22 +287,54 @@ func trayIconName() string {
 
 // trayStyleDetail says what a menu bar style shows.
 func trayStyleDetail(style string) string {
-	from := T("账号取自默认实例（未设置时为第一个实例），按账号列表顺序，跳过已停用和不支持额度的账号；悬停可查看各账号的额度。",
-		"Accounts are from the default instance (else the first), in the order of the account list, skipping disabled ones and those without a quota; hover for each account's quota.")
-	switch style {
-	case store.TrayStyleBattery:
-		return T("以竖向电池显示最多 6 个账号的剩余额度（5 小时与周限额中较低的一个）。", "Shows the quota left of up to 6 accounts as upright batteries (the lower of the 5-hour and weekly limits). ") + from
-	case store.TrayStyleBars:
-		return T("以进度条显示最多 2 个账号：上方为 5 小时限额，下方为周限额（彩色时分别为蓝色与紫色）；没有 5 小时限额的账号只显示周限额。", "Shows up to 2 accounts as bars: the 5-hour limit over the weekly one (blue and purple in color); accounts without a 5-hour limit show the weekly one alone. ") + from
+	if style == store.TrayStyleBars {
+		return T("以进度条显示最多 2 个账号的剩余额度（有 5 小时限额时显示 5 小时限额，没有则显示周限额或其他限额），旁边标出服务商、限额、剩余比例和刷新时间。账号取自默认实例（未设置时为第一个实例），置顶的账号优先，其余按账号列表顺序，跳过已停用和不支持额度的账号；悬停可查看各账号的额度。",
+			"Shows the quota left of up to 2 accounts as bars (the 5-hour limit, else the weekly or another one), each with its provider, limit, percent left and refill time. Accounts are from the default instance (else the first), pinned ones first, then in the order of the account list, skipping disabled ones and those without a quota; hover for each account's quota.")
 	}
 	return T("显示 CPA-Bar 图标，可在旁边显示在线实例数。", "Shows the CPA-Bar icon, optionally with the number of instances online.")
+}
+
+// trayAccountsRow says which instance and accounts the bars show.
+func trayAccountsRow(c *ui.Context, a *App, row func(label, detail string, control func())) {
+	s, ok := a.trayInstance()
+	detail := ""
+	var creds []cpa.Credential
+	switch {
+	case !ok:
+		detail = T("还没有实例。", "No instances yet.")
+	case s.Profile.Paused:
+		detail = fmt.Sprintf(T("实例“%s”已暂停，菜单栏显示图标。", "Instance “%s” is paused; the menu bar shows the icon."), s.Profile.Name)
+	default:
+		creds = trayAccounts(s, trayMaxBars)
+		detail = fmt.Sprintf(T("实例：%s", "Instance: %s"), s.Profile.Name)
+		if len(creds) == 0 {
+			detail += T("。没有可显示额度的账号，菜单栏显示图标。", ". No account has a quota to show; the menu bar shows the icon.")
+		}
+	}
+	row(T("显示的账号", "Accounts shown"), detail, func() {
+		if len(creds) == 0 {
+			return
+		}
+		t := c.Theme()
+		ui.Column(c).Gap(6).Children(func() {
+			for _, cr := range creds {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					credTile(c.Key("tray-"+credKeyOf(cr)), cr, 22, pal(t).Card)
+					ui.Text(c, PrivName(cr.DisplayName())).FontSize(12).SingleLine()
+					if s.Profile.Pinned(credFileName(cr)) {
+						ui.Icon(c, icPinned).FontSize(11).TextColor(t.Accent).Label(T("已置顶", "Pinned")).Tooltip(T("已置顶", "Pinned"))
+					}
+				})
+			}
+		})
+	})
 }
 
 // trayIconDetail says how the mono icon looks on the platform.
 func trayIconDetail() string {
 	switch runtime.GOOS {
 	case "darwin":
-		return T("纯色随菜单栏自动显示为黑色或白色；彩色显示 CPA-Bar 标志的颜色。电池和进度条样式同样区分纯色与彩色。", "Mono turns black or white with the menu bar; color shows the logo in its colors. The battery and bar styles follow this too.")
+		return T("纯色随菜单栏自动显示为黑色或白色；彩色显示 CPA-Bar 标志的颜色。不影响进度条样式。", "Mono turns black or white with the menu bar; color shows the logo in its colors. The bars style is not affected.")
 	case "windows":
 		return T("纯色随任务栏的深浅显示为白色或黑色；彩色显示 CPA-Bar 标志的颜色。", "Mono is white or black to suit the taskbar; color shows the logo in its colors.")
 	}

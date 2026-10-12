@@ -236,13 +236,19 @@ func quotaText(t quota.Text) string {
 
 // quotaColor is the color of what is left: green, amber, then red.
 func quotaColor(t *ui.Theme, remaining float64) ui.Color {
+	return [...]ui.Color{t.Success, t.Warning, t.Danger}[quotaTier(remaining)]
+}
+
+// quotaTier is how much of a limit is left: 0 from 70%, 1 from 30%, else
+// 2. The panel and the menu bar color it alike.
+func quotaTier(remaining float64) int {
 	switch {
 	case remaining >= 0.7:
-		return t.Success
+		return 0
 	case remaining >= 0.3:
-		return t.Warning
+		return 1
 	}
-	return t.Danger
+	return 2
 }
 
 // quotaPercent is the share left, rounded down so that a nearly spent

@@ -109,7 +109,7 @@ type Settings struct {
 	// TrayText shows "3/4" next to the icon where the platform can.
 	TrayText bool `json:"trayText"`
 	// TrayStyle is what the menu bar shows: the icon (and TrayText), or
-	// the quota of some accounts as batteries or bars.
+	// the quota of some accounts as bars.
 	TrayStyle string `json:"trayStyle,omitempty"`
 	// TrayIconColor shows the tray icon in the logo's colors. By default
 	// it is in one color, which follows the menu bar or taskbar.
@@ -127,12 +127,11 @@ type Settings struct {
 const (
 	// TrayStyleIcon is the logo, with the text of TrayText.
 	TrayStyleIcon = ""
-	// TrayStyleBattery shows the quota of up to six accounts as upright
-	// batteries.
-	TrayStyleBattery = "battery"
-	// TrayStyleBars shows the quota of up to two accounts as bars, the
-	// short limit over the long one.
+	// TrayStyleBars shows the quota of up to two accounts as bars, each
+	// with a line of text.
 	TrayStyleBars = "bars"
+	// trayStyleBattery was a style of upright batteries; it shows as bars.
+	trayStyleBattery = "battery"
 )
 
 // Defaults returns the settings of a first launch.
@@ -176,7 +175,11 @@ func (s *Settings) Normalize() {
 	for i := range s.Instances {
 		s.Instances[i].Order = i
 	}
-	if s.TrayStyle != TrayStyleBattery && s.TrayStyle != TrayStyleBars {
+	switch s.TrayStyle {
+	case TrayStyleBars:
+	case trayStyleBattery:
+		s.TrayStyle = TrayStyleBars
+	default:
 		s.TrayStyle = TrayStyleIcon
 	}
 	if s.DefaultInstanceID != "" && s.Instance(s.DefaultInstanceID) == nil {

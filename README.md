@@ -22,7 +22,7 @@ CPA-Bar is a native desktop app for macOS, Windows and Linux. It sits in the men
 - **Full management**: accounts, OAuth sign-in, providers and API keys, configuration and routing, logs and plugins.
 - **Quotas and usage**: what each account has left and when it resets, and request, token and latency statistics over time.
 - **[CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus) support**: detected when you add an instance, for its usage history.
-- **Your menu bar, your way** (macOS): the logo with the number of instances online, or the quota of your accounts as batteries or bars.
+- **Your menu bar, your way** (macOS): the logo with the number of instances online, or the quota of two accounts as bars (pinned accounts first).
 - **Instance marks**: give each instance its own icon and color.
 - **Private by design**: keys stay in the system keychain, a privacy mode hides addresses and account names for screenshots, and there is no telemetry.
 - **Signed in-app updates** from GitHub Releases.

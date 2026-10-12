@@ -293,12 +293,15 @@ func (a *App) updateTray() {
 	}
 	settings := a.Svc.Settings()
 	st := trayState{look: a.trayLook(health), tip: "CPA-Bar\n" + overviewLine(o)}
-	if style, limit := trayGaugeStyle(settings.TrayStyle); limit > 0 {
-		gauges, lines := a.trayGauges(limit, time.Now())
-		if len(gauges) > 0 {
-			st.look.style, st.look.n = style, copy(st.look.gauges[:], gauges)
-			st.tip += "\n" + strings.Join(lines, "\n")
+	if limit := trayGaugeLimit(settings.TrayStyle); limit > 0 {
+		var texts []string
+		for _, r := range a.trayRows(limit, time.Now()) {
+			st.look.gauges[st.look.n] = r.gauge
+			st.look.n++
+			texts = append(texts, r.text)
+			st.tip += "\n" + r.tip
 		}
+		st.title = strings.Join(texts, "\n")
 	}
 	if st.look.n == 0 && settings.TrayText && o.Instances > 0 && runtime.GOOS == "darwin" {
 		st.title = fmt.Sprintf("%d/%d", o.Online, o.Instances)
@@ -313,7 +316,11 @@ func (a *App) updateTray() {
 		_ = a.tray.SetIcon(trayIcon(st.look))
 	}
 	if st.title != a.lastTray.title {
-		a.tray.SetTitle(st.title)
+		if strings.Contains(st.title, "\n") {
+			setTrayLines(a.tray, strings.Split(st.title, "\n"))
+		} else {
+			a.tray.SetTitle(st.title)
+		}
 	}
 	if st.tip != a.lastTray.tip {
 		a.tray.SetToolTip(st.tip)

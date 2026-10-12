@@ -3,14 +3,19 @@ package view
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/licoy/cpa-bar/internal/core"
+	"github.com/licoy/cpa-bar/internal/cpa"
+	"github.com/licoy/cpa-bar/internal/quota"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -42,96 +47,101 @@ func count(img *image.NRGBA, r, g, b uint8) int {
 	return n
 }
 
-// Batteries are 18 points tall, one an account, filled to the lower limit
-// in a color by how much is left; mono ones are a single color.
-func TestBatteryIcon(t *testing.T) {
-	gs := []trayGauge{
-		{known: true, short: 90, long: 80},
-		{known: true, short: -1, long: 35},
-		{known: true, short: 5, long: 70},
-		{known: false, short: -1, long: -1},
-	}
-	img := decodeGauge(t, batteryIcon(gs, false))
-	if img.Bounds().Dy() != 36 || img.Bounds().Dx() != int((4*7.5+3*3)*2) {
-		t.Errorf("battery icon %v", img.Bounds())
-	}
-	if count(img, 52, 199, 89) < 20 || count(img, 255, 159, 10) < 20 || count(img, 255, 59, 48) < 2 {
-		t.Error("the batteries lack green, orange or red charge")
-	}
-	// The battery at 80% holds more than the one at 35%.
-	column := func(x float64) int {
-		n := 0
-		for y := range 36 {
-			if p := img.Pix[img.PixOffset(int(x*2), y):]; p[3] == 255 && p[0] != 142 {
-				n++
-			}
-		}
-		return n
-	}
-	if full, mid, unknown := column(3.75), column(3.75+10.5), column(3.75+3*10.5); full <= mid || unknown != 0 {
-		t.Errorf("charge columns: %d, %d, unknown %d", full, mid, unknown)
-	}
-
-	mono := decodeGauge(t, batteryIcon(gs, true))
-	for i := 0; i < len(mono.Pix); i += 4 {
-		if mono.Pix[i] != 0 || mono.Pix[i+1] != 0 || mono.Pix[i+2] != 0 {
-			t.Fatal("the mono batteries are not black")
-		}
-	}
-}
-
-// Bars show the short limit in blue over the long one in purple; an
-// account without a short limit has the long bar alone.
+// The bars are 18 points tall, one an account, filled in a color by how
+// much is left; an unknown quota is an empty track.
 func TestBarsIcon(t *testing.T) {
-	both := decodeGauge(t, barsIcon([]trayGauge{{known: true, short: 60, long: 30}, {known: true, short: -1, long: 90}}, false))
-	if both.Bounds().Dy() != 36 || both.Bounds().Dx() != 60 {
-		t.Errorf("bars icon %v", both.Bounds())
+	img := decodeGauge(t, barsIcon([]trayGauge{{known: true, left: 84}, {known: true, left: 15}}))
+	if img.Bounds().Dy() != 36 || img.Bounds().Dx() != 72 {
+		t.Errorf("bars icon %v", img.Bounds())
 	}
-	blue, purple := count(both, 10, 132, 255), count(both, 175, 82, 222)
-	if blue == 0 || purple == 0 {
-		t.Fatalf("blue %d, purple %d", blue, purple)
+	green, red := count(img, 0x30, 0xD1, 0x58), count(img, 0xFF, 0x45, 0x3A)
+	if green == 0 || red == 0 || green < red*4 {
+		t.Errorf("green %d, red %d", green, red)
 	}
-	// 60% of one bar against 30% of one and 90% of another.
-	if purple < blue {
-		t.Errorf("blue %d, purple %d", blue, purple)
+	one := decodeGauge(t, barsIcon([]trayGauge{{known: true, left: 40}, {}}))
+	if count(one, 0xFF, 0x9F, 0x0A) == 0 || count(one, 0x30, 0xD1, 0x58) != 0 || count(one, 0xFF, 0x45, 0x3A) != 0 {
+		t.Error("an amber bar and an empty track have other colors")
 	}
-	weekOnly := decodeGauge(t, barsIcon([]trayGauge{{known: true, short: -1, long: 50}}, false))
-	if count(weekOnly, 10, 132, 255) != 0 || count(weekOnly, 175, 82, 222) == 0 {
-		t.Error("a weekly-only account is not a purple bar alone")
+	// The panel's tiers: green from 70%, amber from 30%, red below.
+	for p, want := range map[int]color.NRGBA{100: gaugeGreen, 70: gaugeGreen, 69: gaugeAmber, 30: gaugeAmber, 29: gaugeRed, 0: gaugeRed} {
+		if got := levelColor(p); got != want {
+			t.Errorf("%d%% is %v, want %v", p, got, want)
+		}
 	}
 }
 
-// The batteries show the default instance's enabled accounts that have a
-// quota, unknown until read; the menu bar text drops "CPA".
-func TestTrayGauges(t *testing.T) {
+// A row shows the short limit, else the long one, without the word for
+// limit, and when it refills: the time within a day, else the date.
+func TestTrayRow(t *testing.T) {
+	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.Local)
+	cr := cpa.Credential{Name: "a.json", Provider: "codex", Email: "a@example.com"}
+	short := &quota.Window{Label: quota.Text{ZH: "5 小时限额", EN: "5-hour limit"}, Remaining: 0.9, Known: true, ResetAt: now.Add(3 * time.Hour)}
+	long := &quota.Window{Label: quota.Text{ZH: "周限额", EN: "Weekly limit"}, Remaining: 0.84, Known: true, ResetAt: time.Date(2026, 10, 18, 8, 0, 0, 0, time.Local)}
+	if r := newTrayRow(cr, short, long, now); r.text != "Codex · 5 小时 90% · 12:00" || r.gauge != (trayGauge{known: true, left: 90}) || r.tip != "a@example.com  5 小时限额 90% · 周限额 84%" {
+		t.Errorf("row %+v", r)
+	}
+	if r := newTrayRow(cr, nil, long, now); r.text != "Codex · 每周 84% · 10/18" || r.gauge != (trayGauge{known: true, left: 84}) {
+		t.Errorf("weekly-only row %+v", r)
+	}
+	if r := newTrayRow(cpa.Credential{Provider: "xai"}, nil, nil, now); r.text != "Grok · 额度未知" || r.gauge.known {
+		t.Errorf("unknown row %+v", r)
+	}
+}
+
+// The menu bar shows the default instance's enabled accounts that have a
+// quota, pinned ones first, unknown until read.
+func TestTrayRows(t *testing.T) {
 	a, _, _, q := quotaApp(t)
-	gs, lines := a.trayGauges(trayMaxBatteries, time.Now())
-	if len(gs) != 1 || gs[0].known || len(lines) != 1 {
-		t.Fatalf("gauges before the read: %+v %q", gs, lines)
+	rows := a.trayRows(trayMaxBars, time.Now())
+	if len(rows) != 1 || rows[0].gauge.known {
+		t.Fatalf("rows before the read: %+v", rows)
 	}
 	tt := ui.NewTester(a.panelView, panelWidth, panelHeight)
 	waitFor(t, tt, q, "the tray quota", func() bool {
-		gs, _ = a.trayGauges(trayMaxBatteries, time.Now())
-		return len(gs) == 1 && gs[0].known
+		rows = a.trayRows(trayMaxBars, time.Now())
+		return len(rows) == 1 && rows[0].gauge.known
 	})
-	if gs[0].short != 95 || gs[0].long != 67 || gs[0].level() != 67 {
-		t.Errorf("gauge %+v", gs[0])
+	if rows[0].gauge.left != 95 || !strings.HasPrefix(rows[0].text, "Claude · 5 小时 95% · ") {
+		t.Errorf("row %+v", rows[0])
 	}
-	if _, lines = a.trayGauges(trayMaxBatteries, time.Now()); lines[0] != "pro@example.com  5 小时 95% · 周 67%" {
-		t.Errorf("tooltip line %q", lines[0])
+	if rows[0].tip != "pro@example.com  5 小时限额 95% · 7 天限额 67%" {
+		t.Errorf("tooltip line %q", rows[0].tip)
 	}
 
-	style, limit := trayGaugeStyle(store.TrayStyleBars)
-	if runtime.GOOS == "darwin" && (style != store.TrayStyleBars || limit != trayMaxBars) {
-		t.Errorf("bars style = %q, %d", style, limit)
+	limit := trayGaugeLimit(store.TrayStyleBars)
+	if runtime.GOOS == "darwin" && limit != trayMaxBars {
+		t.Errorf("bars limit = %d", limit)
 	}
 	if runtime.GOOS != "darwin" && limit != 0 {
 		t.Errorf("a quota style off macOS")
 	}
+	if trayGaugeLimit(store.TrayStyleIcon) != 0 {
+		t.Error("the icon style shows accounts")
+	}
 }
 
-// The settings offer the three styles on macOS, and the text switch only
-// with the icon.
+// Pinned accounts come first; disabled ones and those without a quota are
+// skipped.
+func TestTrayAccounts(t *testing.T) {
+	s := core.InstanceSnapshot{Credentials: []cpa.Credential{
+		{Name: "a.json", AuthIndex: "a", Provider: "codex"},
+		{Name: "b.json", AuthIndex: "b", Provider: "codex", Disabled: true},
+		{Name: "c.json", AuthIndex: "c", Provider: "openai-compatibility"},
+		{Name: "d.json", AuthIndex: "d", Provider: "claude"},
+		{Name: "e.json", AuthIndex: "e", Provider: "codex"},
+	}}
+	s.Profile.PinnedAccounts = []string{"e.json"}
+	var names []string
+	for _, cr := range trayAccounts(s, trayMaxBars) {
+		names = append(names, cr.Name)
+	}
+	if strings.Join(names, ",") != "e.json,a.json" {
+		t.Errorf("accounts %q", names)
+	}
+}
+
+// The settings offer the icon and the bars on macOS: the instances switch
+// with the icon, the accounts shown with the bars.
 func TestSettingsTrayStyle(t *testing.T) {
 	if !mygoTrayTitleSupported() {
 		t.Skip("the menu bar styles are for macOS")
@@ -139,22 +149,15 @@ func TestSettingsTrayStyle(t *testing.T) {
 	a, _ := newTestApp(t, false)
 	a.page = "settings"
 	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
-	if !tt.HasText("菜单栏文字") {
-		t.Fatal("no text switch with the icon style")
-	}
-	if err := tt.Click("电池"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if a.Svc.Settings().TrayStyle != store.TrayStyleBattery || tt.HasText("菜单栏文字") {
-		t.Errorf("battery style %q, text switch shown %v", a.Svc.Settings().TrayStyle, tt.HasText("菜单栏文字"))
+	if !tt.HasText("显示在线实例数") || tt.HasText("电池") || tt.HasText("显示的账号") {
+		t.Fatalf("icon style texts: %q", tt.Texts())
 	}
 	if err := tt.Click("进度条"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.Svc.Settings().TrayStyle != store.TrayStyleBars {
-		t.Errorf("bars style %q", a.Svc.Settings().TrayStyle)
+	if a.Svc.Settings().TrayStyle != store.TrayStyleBars || tt.HasText("显示在线实例数") || !tt.HasText("显示的账号") {
+		t.Errorf("bars style %q, texts %q", a.Svc.Settings().TrayStyle, tt.Texts())
 	}
 	if err := tt.Click("图标"); err != nil {
 		t.Fatal(err)

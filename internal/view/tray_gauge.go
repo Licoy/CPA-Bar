@@ -16,75 +16,134 @@ import (
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
-// The menu bar can show the quota of the tray instance's enabled accounts
-// instead of the logo: as upright batteries, one an account, or as bars,
-// the short limit over the long one. The tray instance is the panel's
-// default one, else the first. Its quota is read as for the accounts
-// page, only while the instance is online, so a refused key is not tried
-// again and again.
+// The menu bar can show the quota of the tray instance's first enabled
+// accounts instead of the logo: a bar an account, filled to what is left
+// of its short limit, else of its long one, with a line of text beside it that names the provider, the
+// limit, what is left and when it refills. The tray instance is the
+// panel's default one, else the first; its pinned accounts come first.
+// Its quota is read as for the accounts page, only while the instance is
+// online, so a refused key is not tried again and again.
 
-const (
-	trayMaxBatteries = 6
-	trayMaxBars      = 2
-)
+const trayMaxBars = 2
 
 // trayGauge is the quota of one account, in whole percents so that small
 // changes do not redraw the icon.
 type trayGauge struct {
 	// known is false until the quota is read.
 	known bool
-	// short and long are the percents left of the short (5-hour) and the
-	// long (weekly) limit; -1 when the account has no such limit.
-	short, long int
+	// left is the percent left of the limit the bar shows.
+	left int
 }
 
-// level is what a battery shows: the lower of the two limits.
-func (g trayGauge) level() int {
-	switch {
-	case g.short < 0:
-		return g.long
-	case g.long < 0:
-		return g.short
-	}
-	return min(g.short, g.long)
+// trayRow is an account the menu bar shows.
+type trayRow struct {
+	gauge trayGauge
+	// text is its line in the menu bar, "Codex · 每周 84% · 10/18".
+	text string
+	// tip is its line in the tooltip.
+	tip string
 }
 
-// trayGauges is the quota of the tray instance's first enabled accounts
-// that have one, and a line of the tooltip for each. It starts the reads
-// that are due.
-func (a *App) trayGauges(limit int, now time.Time) (gauges []trayGauge, lines []string) {
-	s, ok := a.trayInstance()
-	if !ok || s.Profile.Paused {
-		return nil, nil
-	}
-	for _, cr := range s.Credentials {
-		if len(gauges) == limit {
+// trayAccounts are the accounts of s the menu bar shows: the first
+// enabled ones that have a quota, pinned first, in the order of the
+// account list.
+func trayAccounts(s core.InstanceSnapshot, limit int) []cpa.Credential {
+	var out []cpa.Credential
+	for _, cr := range pinnedFirst(sortedForPanel(s.Credentials), s.Profile.PinnedAccounts) {
+		if len(out) == limit {
 			break
 		}
 		if cr.Health() == cpa.HealthDisabled || !quota.Supported(cr) {
 			continue
 		}
+		out = append(out, cr)
+	}
+	return out
+}
+
+// trayRows is the quota of the tray instance's accounts. It starts the
+// reads that are due.
+func (a *App) trayRows(limit int, now time.Time) []trayRow {
+	s, ok := a.trayInstance()
+	if !ok || s.Profile.Paused {
+		return nil
+	}
+	var rows []trayRow
+	for _, cr := range trayAccounts(s, limit) {
 		var e *quotaEntry
 		if s.Conn == core.ConnOnline {
 			e, _, _ = a.quotaEntryFor(s, cr, now)
 		} else if q := a.quotas[s.Profile.ID]; q != nil {
 			e = q.entries[cr.AuthIndex]
 		}
-		g := trayGauge{short: -1, long: -1}
+		var short, long *quota.Window
 		if e != nil && e.res != nil {
-			short, long := e.res.Summary()
-			if short != nil {
-				g.short = percent(short.Remaining)
-			}
-			if long != nil {
-				g.long = percent(long.Remaining)
-			}
-			g.known = short != nil || long != nil
+			short, long = e.res.Summary()
 		}
-		gauges = append(gauges, g)
-		lines = append(lines, PrivName(cr.DisplayName())+"  "+g.text())
+		rows = append(rows, newTrayRow(cr, short, long, now))
 	}
-	return gauges, lines
+	return rows
+}
+
+// newTrayRow shows an account's short limit (mostly of five hours), else
+// its long one (weekly or monthly), else the first it has: Summary gives
+// that as the long one.
+func newTrayRow(cr cpa.Credential, short, long *quota.Window, now time.Time) trayRow {
+	w := short
+	if w == nil {
+		w = long
+	}
+	name := trayProviderName(cr.ProviderName())
+	r := trayRow{text: name + " · " + T("额度未知", "quota unknown"), tip: PrivName(cr.DisplayName()) + "  " + T("额度未知", "quota unknown")}
+	if w == nil {
+		return r
+	}
+	r.gauge = trayGauge{known: true, left: percent(w.Remaining)}
+	r.text = fmt.Sprintf("%s · %s %d%%", name, trayLimitName(w.Label), r.gauge.left)
+	if !w.ResetAt.IsZero() {
+		layout := "01/02"
+		if w.ResetAt.Sub(now) < 24*time.Hour {
+			layout = "15:04"
+		}
+		r.text += " · " + w.ResetAt.Local().Format(layout)
+	}
+	var parts []string
+	for _, w := range []*quota.Window{short, long} {
+		if w != nil {
+			parts = append(parts, fmt.Sprintf("%s %d%%", T(w.Label.ZH, w.Label.EN), percent(w.Remaining)))
+		}
+	}
+	r.tip = PrivName(cr.DisplayName()) + "  " + strings.Join(parts, " · ")
+	return r
+}
+
+// trayProviderName is a provider's name short enough for the menu bar:
+// "Codex (OpenAI)" → "Codex".
+func trayProviderName(id string) string {
+	if k := providerKey(id); k == "xai" || k == "grok" {
+		return "Grok"
+	}
+	name, _, _ := strings.Cut(providerLabel(id), " (")
+	return name
+}
+
+// trayLimitName is a limit's label without the word for limit: "周限额" →
+// "每周", "5-hour limit" → "5-hour".
+func trayLimitName(label quota.Text) string {
+	s := T(label.ZH, label.EN)
+	for _, suffix := range []string{"剩余额度", "限额", "额度", " remaining", " limit", " quota"} {
+		if cut, ok := strings.CutSuffix(strings.ToLower(s), suffix); ok && cut != "" {
+			s = s[:len(cut)]
+			break
+		}
+	}
+	switch s {
+	case "周":
+		return "每周"
+	case "月度":
+		return "每月"
+	}
+	return s
 }
 
 // trayInstance is the instance whose accounts the menu bar shows.
@@ -102,44 +161,25 @@ func (a *App) trayInstance() (core.InstanceSnapshot, bool) {
 	return core.InstanceSnapshot{}, false
 }
 
-func percent(f float64) int { return int(math.Round(max(0, min(1, f)) * 100)) }
+// percent is the share left, rounded down as the panel shows it.
+func percent(f float64) int { return int(math.Floor(max(0, min(1, f))*100 + 1e-9)) }
 
-// text says the gauge in the tooltip.
-func (g trayGauge) text() string {
-	if !g.known {
-		return T("额度未知", "quota unknown")
+// trayGaugeLimit is how many accounts the menu bar shows in a style: none
+// but with the bars, and only where the bar has room for text (macOS).
+func trayGaugeLimit(style string) int {
+	if !mygoTrayTitleSupported() || style != store.TrayStyleBars {
+		return 0
 	}
-	var parts []string
-	if g.short >= 0 {
-		parts = append(parts, fmt.Sprintf(T("5 小时 %d%%", "5h %d%%"), g.short))
-	}
-	if g.long >= 0 {
-		parts = append(parts, fmt.Sprintf(T("周 %d%%", "week %d%%"), g.long))
-	}
-	return strings.Join(parts, " · ")
-}
-
-// trayGaugeStyle is the style the menu bar takes: a quota style only where
-// the bar is wide (macOS) and when there are accounts to show.
-func trayGaugeStyle(style string) (string, int) {
-	if !mygoTrayTitleSupported() {
-		return store.TrayStyleIcon, 0
-	}
-	switch style {
-	case store.TrayStyleBattery:
-		return style, trayMaxBatteries
-	case store.TrayStyleBars:
-		return style, trayMaxBars
-	}
-	return store.TrayStyleIcon, 0
+	return trayMaxBars
 }
 
 // ---- Drawing ----
 
-// The gauges are drawn at twice the size in points, 18 points tall like
-// every menu bar image. Mono draws a template, which macOS tints to suit
-// the bar; it tells the limits apart by opacity. Color draws on any bar:
-// the outlines in gray, the levels in color.
+// The bars are drawn at twice the size in points, 18 points tall like
+// every menu bar image, in color whatever the icon's setting: the track in
+// gray, the level in green, amber or red by what is left, as in the panel
+// (in its dark theme's colors, which show on any bar). Each bar sits
+// beside its line of the title.
 
 const (
 	gaugeScale  = 2
@@ -148,14 +188,9 @@ const (
 
 var (
 	gaugeOutline = color.NRGBA{R: 142, G: 142, B: 147, A: 255}
-	gaugeGreen   = color.NRGBA{R: 52, G: 199, B: 89, A: 255}
-	gaugeOrange  = color.NRGBA{R: 255, G: 159, B: 10, A: 255}
-	gaugeRed     = color.NRGBA{R: 255, G: 59, B: 48, A: 255}
-	// gaugeShort and gaugeLong are the colors of the two limits of a bar:
-	// the logo's blue and purple.
-	gaugeShort = color.NRGBA{R: 10, G: 132, B: 255, A: 255}
-	gaugeLong  = color.NRGBA{R: 175, G: 82, B: 222, A: 255}
-	gaugeInk   = color.NRGBA{A: 255}
+	gaugeGreen   = color.NRGBA{R: 0x30, G: 0xD1, B: 0x58, A: 255}
+	gaugeAmber   = color.NRGBA{R: 0xFF, G: 0x9F, B: 0x0A, A: 255}
+	gaugeRed     = color.NRGBA{R: 0xFF, G: 0x45, B: 0x3A, A: 255}
 )
 
 func fade(c color.NRGBA, f float64) color.NRGBA {
@@ -163,105 +198,32 @@ func fade(c color.NRGBA, f float64) color.NRGBA {
 	return c
 }
 
-// levelColor is the color of a battery's charge.
+// levelColor is the color of a bar at p percent left.
 func levelColor(p int) color.NRGBA {
-	switch {
-	case p > 50:
-		return gaugeGreen
-	case p > 20:
-		return gaugeOrange
-	}
-	return gaugeRed
+	return [...]color.NRGBA{gaugeGreen, gaugeAmber, gaugeRed}[quotaTier(float64(p)/100)]
 }
 
-// batteryIcon draws one upright battery an account, filled to the lower of
-// its limits; an unknown quota is a faded, empty battery.
-func batteryIcon(gs []trayGauge, mono bool) []byte {
+// barsIcon draws a bar an account, one over the other; an unknown quota is
+// an empty track.
+func barsIcon(gs []trayGauge) []byte {
 	const (
-		bodyW, bodyH = 7.5, 14.0
-		capW, capH   = 3.5, 1.5
-		gap          = 3.0
-		stroke       = 1.0
-		inset        = stroke + 0.75
+		width = 36.0
+		barH  = 4.0
+		// pitch is the distance between the lines of the title.
+		pitch = 10.0
 	)
-	width := float64(len(gs))*bodyW + float64(len(gs)-1)*gap
 	cv := newGaugeCanvas(width)
-	top := (gaugeHeight - bodyH - capH) / 2
-	for i, g := range gs {
-		x := float64(i) * (bodyW + gap)
-		y := top + capH
-		line, fill := gaugeOutline, levelColor(g.level())
-		if mono {
-			line, fill = gaugeInk, gaugeInk
-		}
-		if !g.known {
-			line = fade(line, 0.4)
-		}
-		cv.fill(x+(bodyW-capW)/2, top, capW, capH+0.5, 0.6, line)
-		cv.stroke(x, y, bodyW, bodyH, 2, stroke, line)
-		if !g.known {
-			continue
-		}
-		innerH := bodyH - 2*inset
-		h := innerH * float64(g.level()) / 100
-		if g.level() > 0 {
-			h = max(h, 1)
-		}
-		cv.fill(x+inset, y+inset+innerH-h, bodyW-2*inset, h, 0.75, fill)
-	}
-	return cv.png()
-}
-
-// barsIcon draws a pair of bars an account: the short limit over the long
-// one, or the long one alone when there is no short limit.
-func barsIcon(gs []trayGauge, mono bool) []byte {
-	const width = 30.0
-	barH, inner, outer := 3.0, 1.0, 2.5
-	if len(gs) == 1 {
-		barH, inner = 5.0, 1.5
-	}
-	rows := 0
+	y := (gaugeHeight-barH)/2 - pitch*float64(len(gs)-1)/2
+	track := fade(gaugeOutline, 0.45)
 	for _, g := range gs {
-		rows += g.bars()
-	}
-	total := float64(rows)*barH + float64(rows-len(gs))*inner + float64(len(gs)-1)*outer
-	cv := newGaugeCanvas(width)
-	y := (gaugeHeight - total) / 2
-	short, long, track := gaugeShort, gaugeLong, fade(gaugeOutline, 0.45)
-	if mono {
-		short, long, track = gaugeInk, fade(gaugeInk, 0.55), fade(gaugeInk, 0.2)
-	}
-	bar := func(p int, col color.NRGBA) {
 		cv.fill(0, y, width, barH, barH/2, track)
-		if p > 0 {
-			w := max(width*float64(p)/100, barH)
-			cv.fill(0, y, w, barH, barH/2, col)
+		if g.known && g.left > 0 {
+			w := max(width*float64(g.left)/100, barH)
+			cv.fill(0, y, w, barH, barH/2, levelColor(g.left))
 		}
-		y += barH + inner
-	}
-	for _, g := range gs {
-		switch {
-		case !g.known:
-			bar(0, track)
-		case g.short >= 0 && g.long >= 0:
-			bar(g.short, short)
-			bar(g.long, long)
-		case g.short >= 0:
-			bar(g.short, short)
-		default:
-			bar(g.long, long)
-		}
-		y += outer - inner
+		y += pitch
 	}
 	return cv.png()
-}
-
-// bars is how many bars an account takes.
-func (g trayGauge) bars() int {
-	if g.known && g.short >= 0 && g.long >= 0 {
-		return 2
-	}
-	return 1
 }
 
 // gaugeCanvas is an image measured in points, drawn with antialiased

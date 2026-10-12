@@ -548,3 +548,15 @@ func TestMemorySecrets(t *testing.T) {
 		t.Errorf("Delete with Err = %v", err)
 	}
 }
+
+// The battery style is gone: it shows as bars; unknown styles as the icon.
+func TestNormalizeTrayStyle(t *testing.T) {
+	for in, want := range map[string]string{"battery": TrayStyleBars, "bars": TrayStyleBars, "dots": TrayStyleIcon, "": TrayStyleIcon} {
+		s := Defaults()
+		s.TrayStyle = in
+		s.Normalize()
+		if s.TrayStyle != want {
+			t.Errorf("%q normalizes to %q, want %q", in, s.TrayStyle, want)
+		}
+	}
+}

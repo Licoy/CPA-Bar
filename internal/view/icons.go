@@ -7,8 +7,6 @@ import (
 	"image/color"
 	"image/png"
 	"runtime"
-
-	"github.com/licoy/cpa-bar/internal/store"
 )
 
 // The tray icons and the app icon, rendered from the logo SVGs in
@@ -43,11 +41,9 @@ type trayLook struct {
 	// menu bar tints; elsewhere white on a dark taskbar or panel, else
 	// black.
 	mono, light bool
-	// style, when not the icon, draws the first n gauges instead of the
-	// logo.
-	style  string
+	// n, when not 0, draws the first n gauges as bars instead of the logo.
 	n      int
-	gauges [trayMaxBatteries]trayGauge
+	gauges [trayMaxBars]trayGauge
 }
 
 // trayIcon draws the tray icon: the logo, 18 points tall on macOS and
@@ -55,12 +51,8 @@ type trayLook struct {
 // at the corner, red in color and in the logo's color when mono, with a
 // gap around it so that it shows over the logo.
 func trayIcon(l trayLook) (data []byte, template bool) {
-	switch {
-	case l.n == 0:
-	case l.style == store.TrayStyleBattery:
-		return batteryIcon(l.gauges[:l.n], l.mono), l.mono
-	case l.style == store.TrayStyleBars:
-		return barsIcon(l.gauges[:l.n], l.mono), l.mono
+	if l.n > 0 {
+		return barsIcon(l.gauges[:l.n]), false
 	}
 	src := trayColor32
 	switch {
