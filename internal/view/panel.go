@@ -67,6 +67,7 @@ func (a *App) panelView(c *ui.Context) {
 			}
 		})
 		a.panelFooter(c)
+		a.panelGrip(c)
 	})
 }
 

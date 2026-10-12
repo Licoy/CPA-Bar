@@ -96,6 +96,9 @@ type Settings struct {
 	// PanelOpaque uses a solid panel on macOS; the zero value keeps the
 	// system's translucent popover.
 	PanelOpaque bool `json:"panelOpaque,omitempty"`
+	// PanelHeight is the height in DIPs the user dragged the panel to; 0
+	// keeps the default.
+	PanelHeight int `json:"panelHeight,omitempty"`
 
 	// Refresh intervals in seconds.
 	BackgroundRefresh int `json:"backgroundRefresh"`
@@ -162,6 +165,9 @@ func (s *Settings) Normalize() {
 	}
 	if s.BackgroundRefresh < 10 {
 		s.BackgroundRefresh = d.BackgroundRefresh
+	}
+	if s.PanelHeight < 0 {
+		s.PanelHeight = 0
 	}
 	if s.ActiveRefresh < 3 {
 		s.ActiveRefresh = d.ActiveRefresh

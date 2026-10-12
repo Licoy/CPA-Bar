@@ -75,6 +75,14 @@ func (a *App) matchPanelAppearance() {
 	a.panelPopover.popover.Send(objc.RegisterName("setAppearance:"), app.Send(objc.RegisterName("effectiveAppearance")))
 }
 
+// setPanelAnimates turns the popover's animations on or off: off while
+// the user drags its height, which an animated resize would trail.
+func setPanelAnimates(a *App, on bool) {
+	if a.panelPopover.popover != 0 {
+		a.panelPopover.popover.Send(objc.RegisterName("setAnimates:"), on)
+	}
+}
+
 func panelContentInsets(a *App) panelInsets {
 	if !a.Svc.Settings().PanelOpaque || !panelOpacitySupported() {
 		return panelInsets{}

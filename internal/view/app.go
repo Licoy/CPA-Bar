@@ -21,7 +21,8 @@ import (
 	"github.com/licoy/cpa-bar/internal/usage"
 )
 
-// Panel and window sizes in DIPs; the flyout shrinks to the work area.
+// Panel and window sizes in DIPs; the flyout shrinks to the work area. The
+// user may drag the panel's height (see panelGrip).
 const (
 	panelWidth    = 420
 	panelHeight   = 560
@@ -47,6 +48,7 @@ type App struct {
 	panelLists    map[string]*panelList
 	panelPopover  panelPopoverState
 	panelSafeArea panelInsets
+	panelResize   panelResize
 	// quotas caches the quota of the accounts, per instance.
 	quotas map[string]*quotaInstance
 
@@ -346,7 +348,7 @@ func (a *App) OpenPanel() {
 		Placement: mygo.PlacementBottom,
 		Gap:       4,
 		Width:     panelWidth,
-		Height:    panelHeight,
+		Height:    a.openPanelResize(),
 		Focusable: true,
 		Shadow:    true,
 		Popover:   runtime.GOOS == "darwin",
