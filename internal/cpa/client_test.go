@@ -133,6 +133,136 @@ func TestNoKeyNoAuthorizationHeader(t *testing.T) {
 	}
 }
 
+func TestRedirectAuthorizationPolicy(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		forward   bool
+		crossHost bool
+		want      string
+	}{
+		{name: "default strips authorization"},
+		{name: "enabled forwards authorization across hosts", forward: true, crossHost: true, want: "Bearer k3y"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotMiddle, gotDestination string
+			destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotDestination = r.Header.Get("Authorization")
+				_, _ = io.WriteString(w, `{"files":[]}`)
+			}))
+			defer destination.Close()
+			middle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMiddle = r.Header.Get("Authorization")
+				http.Redirect(w, r, destination.URL, http.StatusFound)
+			}))
+			defer middle.Close()
+
+			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, middle.URL, http.StatusFound)
+			}))
+			defer origin.Close()
+			base := origin.URL
+			if tt.crossHost {
+				base = strings.Replace(base, "127.0.0.1", "localhost", 1)
+			}
+			c, err := New(Options{
+				BaseURL:               base,
+				ManagementKey:         "k3y",
+				ForwardAuthOnRedirect: tt.forward,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := listErr(c); err != nil {
+				t.Fatal(err)
+			}
+			if gotMiddle != tt.want || gotDestination != tt.want {
+				t.Errorf("redirected Authorization = [%q, %q], want %q on every hop", gotMiddle, gotDestination, tt.want)
+			}
+		})
+	}
+}
+
+func TestRedirectRejectsHTTPSDowngrade(t *testing.T) {
+	requests := 0
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer destination.Close()
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	for _, tt := range []struct {
+		name    string
+		forward bool
+	}{
+		{name: "default"},
+		{name: "forward authorization enabled", forward: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := New(Options{
+				BaseURL:               origin.URL,
+				ManagementKey:         "k3y",
+				ForwardAuthOnRedirect: tt.forward,
+				Transport:             origin.Client().Transport,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = listErr(c)
+			if err == nil || !strings.Contains(err.Error(), "refusing redirect from HTTPS to HTTP") {
+				t.Fatalf("downgrade error = %v", err)
+			}
+		})
+	}
+	if requests != 0 {
+		t.Fatalf("HTTP destination received %d requests", requests)
+	}
+}
+
+func TestRedirectRejectsURLCredentials(t *testing.T) {
+	requests := 0
+	destination := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests++
+	}))
+	defer destination.Close()
+	redirectURL := strings.Replace(destination.URL, "://", "://user:password@", 1)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	for _, forward := range []bool{false, true} {
+		c := newClient(t, origin, func(o *Options) { o.ForwardAuthOnRedirect = forward })
+		err := listErr(c)
+		if err == nil || !strings.Contains(err.Error(), "refusing redirect URL with credentials") {
+			t.Fatalf("ForwardAuthOnRedirect=%t: userinfo redirect error = %v", forward, err)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("credentialed destination received %d requests", requests)
+	}
+}
+
+func TestRedirectLimit(t *testing.T) {
+	requests := 0
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Redirect(w, r, srv.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	err := listErr(newClient(t, srv))
+	if err == nil || !strings.Contains(err.Error(), "stopped after 10 redirects") {
+		t.Fatalf("redirect loop error = %v", err)
+	}
+	if requests != 10 {
+		t.Fatalf("server received %d requests, want 10", requests)
+	}
+}
+
 func TestBaseURLWithProxyPrefix(t *testing.T) {
 	srv, rc := serve(t, reply(200, `{}`))
 	c := newClient(t, srv, func(o *Options) { o.BaseURL = srv.URL + "/cpa/" })

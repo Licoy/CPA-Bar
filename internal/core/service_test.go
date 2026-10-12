@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/licoy/cpa-bar/internal/cpa"
+	"github.com/licoy/cpa-bar/internal/cpamp/cpamptest"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -429,6 +430,43 @@ func (s *spySecrets) Delete(id string) error {
 	return nil
 }
 
+type faultSecrets struct {
+	m          map[string]string
+	getHook    func(string) (string, error)
+	setHook    func(string, string) error
+	deleteHook func(string) error
+}
+
+func (s *faultSecrets) Get(id string) (string, error) {
+	if s.getHook != nil {
+		return s.getHook(id)
+	}
+	key, ok := s.m[id]
+	if !ok {
+		return "", store.ErrSecretNotFound
+	}
+	return key, nil
+}
+
+func (s *faultSecrets) Set(id, key string) error {
+	if s.setHook != nil {
+		return s.setHook(id, key)
+	}
+	if s.m == nil {
+		s.m = map[string]string{}
+	}
+	s.m[id] = key
+	return nil
+}
+
+func (s *faultSecrets) Delete(id string) error {
+	if s.deleteHook != nil {
+		return s.deleteHook(id)
+	}
+	delete(s.m, id)
+	return nil
+}
+
 // ---- AddInstance ----
 
 func TestAddInstanceProbesThenSaves(t *testing.T) {
@@ -536,6 +574,47 @@ func TestAddInstanceSavesNothingOnFailure(t *testing.T) {
 				t.Error("service state changed")
 			}
 		})
+	}
+}
+
+func TestAddInstanceReportsOriginalAndCleanupErrors(t *testing.T) {
+	f := newFakeCPA(t, "good")
+	mp := cpamptest.New(t, "admin")
+	primary := errors.New("manager key write failed")
+	cleanup := errors.New("credential cleanup failed")
+	secrets := &faultSecrets{m: map[string]string{}}
+	var setCalls, deleteCalls int
+	var mainID string
+	secrets.setHook = func(id, key string) error {
+		setCalls++
+		secrets.m[id] = key
+		if setCalls == 1 {
+			mainID = id
+			return nil
+		}
+		return primary
+	}
+	secrets.deleteHook = func(id string) error {
+		deleteCalls++
+		delete(secrets.m, id)
+		if deleteCalls == 2 {
+			return cleanup
+		}
+		return nil
+	}
+	e := newEnvWith(t, func(o *Options) { o.Secrets = secrets })
+	_, err := e.svc.AddInstance(bg, InstanceInput{
+		Address: f.srv.URL, Key: "good", Flavor: store.FlavorManagerPlus,
+		ManagerURL: mp.URL, ManagerKey: "admin",
+	})
+	if !errors.Is(err, primary) || !errors.Is(err, cleanup) {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(err.Error(), mainID) || strings.Contains(err.Error(), "good") || strings.Contains(err.Error(), "admin") {
+		t.Errorf("error must identify the credential without exposing keys: %v", err)
+	}
+	if len(secrets.m) != 0 {
+		t.Errorf("credentials left after cleanup: %v", secrets.m)
 	}
 }
 
@@ -914,6 +993,60 @@ func TestUpdateInstanceFailures(t *testing.T) {
 	}
 }
 
+func TestUpdateInstanceRestoresCredentialState(t *testing.T) {
+	f := newFakeCPA(t, "old")
+	t.Run("failed write and failed rollback are both reported", func(t *testing.T) {
+		secrets := &faultSecrets{m: map[string]string{"i0": "old"}}
+		e := newEnvWith(t, func(o *Options) { o.Secrets = secrets }, f)
+		primary := errors.New("key write failed")
+		rollback := errors.New("key rollback failed")
+		calls := 0
+		secrets.setHook = func(id, key string) error {
+			calls++
+			secrets.m[id] = key
+			if calls == 1 {
+				return primary
+			}
+			return rollback
+		}
+		err := e.svc.UpdateInstance("i0", InstanceInput{Name: "N0", Address: f.srv.URL, Key: "new"})
+		if !errors.Is(err, primary) || !errors.Is(err, rollback) {
+			t.Fatalf("err = %v", err)
+		}
+		if got := secrets.m["i0"]; got != "old" {
+			t.Errorf("credential after rollback = %q", got)
+		}
+		if got := e.svc.Settings().Instances[0].Name; got != "N0" {
+			t.Errorf("settings changed to %q", got)
+		}
+	})
+
+	t.Run("previously absent credential is deleted after save failure", func(t *testing.T) {
+		secrets := &faultSecrets{m: map[string]string{}}
+		e := newEnvWith(t, func(o *Options) { o.Secrets = secrets }, f)
+		e.set.setErr(errBoom)
+		if err := e.svc.UpdateInstance("i0", InstanceInput{Name: "N0", Address: f.srv.URL, Key: "new"}); !errors.Is(err, errBoom) {
+			t.Fatalf("err = %v", err)
+		}
+		if _, ok := secrets.m["i0"]; ok {
+			t.Error("new credential was not deleted")
+		}
+	})
+
+	t.Run("credential read failure stops before mutation", func(t *testing.T) {
+		secrets := &faultSecrets{m: map[string]string{"i0": "old"}}
+		e := newEnvWith(t, func(o *Options) { o.Secrets = secrets }, f)
+		readErr := errors.New("credential read failed")
+		secrets.getHook = func(string) (string, error) { return "", readErr }
+		var writes int
+		secrets.setHook = func(string, string) error { writes++; return nil }
+		err := e.svc.UpdateInstance("i0", InstanceInput{Name: "N0", Address: f.srv.URL, Key: "new"})
+		if !errors.Is(err, readErr) || writes != 0 {
+			t.Fatalf("err = %v, writes = %d", err, writes)
+		}
+	})
+}
+
 // A rename rebuilds the client; if the key cannot be read then, a request
 // that was already in flight must still finish without crashing.
 func TestRenameWhileRefreshingWithUnreadableKey(t *testing.T) {
@@ -1028,16 +1161,47 @@ func TestRemoveInstanceFailures(t *testing.T) {
 			t.Errorf("key was deleted: %q %v", k, err)
 		}
 	})
-	t.Run("key deletion fails: instance is gone, error says so", func(t *testing.T) {
+	t.Run("key deletion fails: instance remains for retry", func(t *testing.T) {
 		f := newFakeCPA(t, "k")
 		e := newEnv(t, f)
 		e.sec.Err = errBoom
 		err := e.svc.RemoveInstance("i0")
-		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), "instance removed") {
+		if !errors.Is(err, errBoom) {
 			t.Errorf("err = %v", err)
 		}
+		if _, ok := e.svc.Snapshot("i0"); !ok {
+			t.Error("instance was removed")
+		}
+		e.sec.Err = nil
+		if err := e.svc.RemoveInstance("i0"); err != nil {
+			t.Fatalf("retry: %v", err)
+		}
+	})
+	t.Run("delete may mutate before failing and is restored", func(t *testing.T) {
+		f := newFakeCPA(t, "k")
+		secrets := &faultSecrets{m: map[string]string{"i0": "k"}}
+		e := newEnvWith(t, func(o *Options) { o.Secrets = secrets }, f)
+		deleteErr := errors.New("delete failed")
+		calls := 0
+		secrets.deleteHook = func(id string) error {
+			calls++
+			delete(secrets.m, id)
+			if calls == 1 {
+				return deleteErr
+			}
+			return nil
+		}
+		if err := e.svc.RemoveInstance("i0"); !errors.Is(err, deleteErr) {
+			t.Fatalf("err = %v", err)
+		}
+		if _, ok := e.svc.Snapshot("i0"); !ok || secrets.m["i0"] != "k" {
+			t.Fatalf("failed removal changed instance or credential: %v", secrets.m)
+		}
+		if err := e.svc.RemoveInstance("i0"); err != nil {
+			t.Fatalf("retry: %v", err)
+		}
 		if _, ok := e.svc.Snapshot("i0"); ok {
-			t.Error("instance still there")
+			t.Error("instance remains after successful retry")
 		}
 	})
 }
@@ -1713,6 +1877,32 @@ func TestDefaultClientFactoryBuildsRealClients(t *testing.T) {
 		t.Errorf("snapshot = %+v", s)
 	}
 	wantReqs(t, f, 0)
+}
+
+func TestChangingRedirectAuthorizationSettingReconnects(t *testing.T) {
+	f := newFakeCPA(t, "k")
+	var built []bool
+	e := newEnvWith(t, func(o *Options) {
+		o.NewClient = func(p store.InstanceProfile, key string) (*cpa.Client, error) {
+			built = append(built, p.ForwardAuthOnRedirect)
+			return cpa.New(cpa.Options{
+				InstanceID: p.ID, InstanceName: p.Name, BaseURL: p.BaseURL, ManagementKey: key,
+				ForwardAuthOnRedirect: p.ForwardAuthOnRedirect,
+			})
+		}
+	}, f)
+	if err := e.svc.UpdateInstance("i0", InstanceInput{
+		Name: "N0", Address: f.srv.URL, ForwardAuthOnRedirect: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.settle()
+	if !slices.Equal(built, []bool{false, true}) {
+		t.Fatalf("client builds = %v", built)
+	}
+	if p := e.svc.Settings().Instances[0]; !p.ForwardAuthOnRedirect {
+		t.Errorf("setting was not persisted: %+v", p)
+	}
 }
 
 func TestNewInstanceIDIsUnique(t *testing.T) {

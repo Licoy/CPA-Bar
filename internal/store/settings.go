@@ -30,7 +30,8 @@ type InstanceProfile struct {
 	// Paused stops background monitoring of the instance.
 	Paused bool `json:"paused,omitempty"`
 	// CACertPEM trusts a CA of the user's own for this instance.
-	CACertPEM string `json:"caCertPem,omitempty"`
+	CACertPEM             string `json:"caCertPem,omitempty"`
+	ForwardAuthOnRedirect bool   `json:"forwardAuthOnRedirect,omitempty"`
 	// Icon and Color are the instance's mark: a glyph and a tint name the
 	// view knows, empty for the default.
 	Icon  string `json:"icon,omitempty"`
@@ -303,20 +304,21 @@ type exportFile struct {
 }
 
 type exportInstance struct {
-	Name       string `json:"name"`
-	BaseURL    string `json:"baseUrl"`
-	CACertPEM  string `json:"caCertPem,omitempty"`
-	Icon       string `json:"icon,omitempty"`
-	Color      string `json:"color,omitempty"`
-	Flavor     string `json:"flavor,omitempty"`
-	ManagerURL string `json:"managerUrl,omitempty"`
+	Name                  string `json:"name"`
+	BaseURL               string `json:"baseUrl"`
+	CACertPEM             string `json:"caCertPem,omitempty"`
+	ForwardAuthOnRedirect bool   `json:"forwardAuthOnRedirect,omitempty"`
+	Icon                  string `json:"icon,omitempty"`
+	Color                 string `json:"color,omitempty"`
+	Flavor                string `json:"flavor,omitempty"`
+	ManagerURL            string `json:"managerUrl,omitempty"`
 }
 
 // ExportInstances serializes connection metadata only: never keys.
 func ExportInstances(profiles []InstanceProfile) ([]byte, error) {
 	out := exportFile{Format: ExportFormat, Version: 1, Instances: []exportInstance{}}
 	for _, p := range profiles {
-		out.Instances = append(out.Instances, exportInstance{Name: p.Name, BaseURL: p.BaseURL, CACertPEM: p.CACertPEM, Icon: p.Icon, Color: p.Color, Flavor: p.Flavor, ManagerURL: p.ManagerURL})
+		out.Instances = append(out.Instances, exportInstance{Name: p.Name, BaseURL: p.BaseURL, CACertPEM: p.CACertPEM, ForwardAuthOnRedirect: p.ForwardAuthOnRedirect, Icon: p.Icon, Color: p.Color, Flavor: p.Flavor, ManagerURL: p.ManagerURL})
 	}
 	return json.MarshalIndent(out, "", "  ")
 }
@@ -324,13 +326,14 @@ func ExportInstances(profiles []InstanceProfile) ([]byte, error) {
 // ImportedInstance is a connection read from an export file, without an ID
 // or a key: the caller assigns an ID and asks the user for the key.
 type ImportedInstance struct {
-	Name       string
-	BaseURL    string
-	CACertPEM  string
-	Icon       string
-	Color      string
-	Flavor     string
-	ManagerURL string
+	Name                  string
+	BaseURL               string
+	CACertPEM             string
+	ForwardAuthOnRedirect bool `json:"forwardAuthOnRedirect,omitempty"`
+	Icon                  string
+	Color                 string
+	Flavor                string
+	ManagerURL            string
 }
 
 // ParseInstances reads an export file.
@@ -347,7 +350,7 @@ func ParseInstances(b []byte) ([]ImportedInstance, error) {
 		if strings.TrimSpace(e.BaseURL) == "" {
 			continue
 		}
-		out = append(out, ImportedInstance{Name: strings.TrimSpace(e.Name), BaseURL: strings.TrimSpace(e.BaseURL), CACertPEM: e.CACertPEM, Icon: e.Icon, Color: e.Color, Flavor: e.Flavor, ManagerURL: strings.TrimSpace(e.ManagerURL)})
+		out = append(out, ImportedInstance{Name: strings.TrimSpace(e.Name), BaseURL: strings.TrimSpace(e.BaseURL), CACertPEM: e.CACertPEM, ForwardAuthOnRedirect: e.ForwardAuthOnRedirect, Icon: e.Icon, Color: e.Color, Flavor: e.Flavor, ManagerURL: strings.TrimSpace(e.ManagerURL)})
 	}
 	return out, nil
 }

@@ -51,7 +51,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in := Defaults()
 	in.Instances = []InstanceProfile{
 		{ID: "a", Name: "Home", BaseURL: "http://127.0.0.1:8317/v8/management", Order: 0, CreatedAt: created},
-		{ID: "b", Name: "Work", BaseURL: "https://h/cpa/v8/management", Order: 1, Paused: true, CACertPEM: "PEM", CreatedAt: created},
+		{ID: "b", Name: "Work", BaseURL: "https://h/cpa/v8/management", Order: 1, Paused: true, CACertPEM: "PEM", ForwardAuthOnRedirect: true, CreatedAt: created},
 	}
 	in.DefaultInstanceID = "b"
 	in.Appearance = AppearanceDark
@@ -418,7 +418,7 @@ func TestSettingsInstanceAndClone(t *testing.T) {
 func TestExportInstancesNeverContainsKeys(t *testing.T) {
 	profiles := []InstanceProfile{
 		{ID: "secret-id-1", Name: "Home", BaseURL: "http://h:1/v8/management", Paused: true, Order: 3, CreatedAt: time.Now()},
-		{ID: "secret-id-2", Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "-----BEGIN CERTIFICATE-----"},
+		{ID: "secret-id-2", Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "-----BEGIN CERTIFICATE-----", ForwardAuthOnRedirect: true},
 	}
 	b, err := ExportInstances(profiles)
 	if err != nil {
@@ -441,9 +441,15 @@ func TestExportInstancesNeverContainsKeys(t *testing.T) {
 	if generic.Format != ExportFormat || generic.Version != 1 || len(generic.Instances) != 2 {
 		t.Errorf("export = %+v", generic)
 	}
+	if _, ok := generic.Instances[0]["forwardAuthOnRedirect"]; ok {
+		t.Error("false forwardAuthOnRedirect was not omitted")
+	}
+	if got := generic.Instances[1]["forwardAuthOnRedirect"]; got != true {
+		t.Errorf("forwardAuthOnRedirect = %#v, want true", got)
+	}
 	for _, in := range generic.Instances {
 		for k := range in {
-			if k != "name" && k != "baseUrl" && k != "caCertPem" && k != "icon" && k != "color" && k != "flavor" && k != "managerUrl" {
+			if k != "name" && k != "baseUrl" && k != "caCertPem" && k != "forwardAuthOnRedirect" && k != "icon" && k != "color" && k != "flavor" && k != "managerUrl" {
 				t.Errorf("unexpected exported field %q", k)
 			}
 		}
@@ -453,7 +459,7 @@ func TestExportInstancesNeverContainsKeys(t *testing.T) {
 func TestExportParseRoundTrip(t *testing.T) {
 	profiles := []InstanceProfile{
 		{ID: "a", Name: "Home", BaseURL: "http://h:1/v8/management"},
-		{ID: "b", Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "PEM DATA", Icon: "rocket", Color: "green"},
+		{ID: "b", Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "PEM DATA", ForwardAuthOnRedirect: true, Icon: "rocket", Color: "green"},
 	}
 	b, err := ExportInstances(profiles)
 	if err != nil {
@@ -465,7 +471,7 @@ func TestExportParseRoundTrip(t *testing.T) {
 	}
 	want := []ImportedInstance{
 		{Name: "Home", BaseURL: "http://h:1/v8/management"},
-		{Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "PEM DATA", Icon: "rocket", Color: "green"},
+		{Name: "Work", BaseURL: "https://w/cpa/v8/management", CACertPEM: "PEM DATA", ForwardAuthOnRedirect: true, Icon: "rocket", Color: "green"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("round trip = %+v, want %+v", got, want)

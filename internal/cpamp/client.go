@@ -42,6 +42,9 @@ type Options struct {
 	AdminKey string
 	// CACertPEM adds certificate authorities to the system ones.
 	CACertPEM []byte
+	// ForwardAuthOnRedirect forwards the original Authorization header on
+	// redirects, including redirects to another host.
+	ForwardAuthOnRedirect bool
 	// Transport replaces the default transport, for tests.
 	Transport http.RoundTripper
 }
@@ -100,7 +103,14 @@ func New(o Options) (*Client, error) {
 		}
 		rt = t
 	}
-	return &Client{base: base, key: strings.TrimSpace(o.AdminKey), http: &http.Client{Transport: rt}}, nil
+	return &Client{
+		base: base,
+		key:  strings.TrimSpace(o.AdminKey),
+		http: &http.Client{
+			Transport:     rt,
+			CheckRedirect: cpa.RedirectPolicy(o.ForwardAuthOnRedirect),
+		},
+	}, nil
 }
 
 // BaseURL is the normalized root of the server.

@@ -45,6 +45,9 @@ type Options struct {
 	ReadTimeout   time.Duration
 	WriteTimeout  time.Duration
 	UploadTimeout time.Duration
+	// ForwardAuthOnRedirect forwards the original Authorization header on
+	// redirects, including redirects to another host.
+	ForwardAuthOnRedirect bool
 
 	// Transport replaces the default transport, for tests.
 	Transport http.RoundTripper
@@ -89,7 +92,10 @@ func New(o Options) (*Client, error) {
 		instanceName: o.InstanceName,
 		base:         base,
 		key:          o.ManagementKey,
-		http:         &http.Client{Transport: rt},
+		http: &http.Client{
+			Transport:     rt,
+			CheckRedirect: RedirectPolicy(o.ForwardAuthOnRedirect),
+		},
 		readTimeout:  orDefault(o.ReadTimeout, DefaultReadTimeout),
 		writeTimeout: orDefault(o.WriteTimeout, DefaultWriteTimeout),
 		uploadTO:     orDefault(o.UploadTimeout, DefaultUploadTimeout),

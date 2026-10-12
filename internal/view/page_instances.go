@@ -30,14 +30,15 @@ func init() {
 type instanceEditor struct {
 	open bool
 	// id is the edited instance, "" when adding.
-	id       string
-	name     string
-	address  string
-	key      string
-	ca       string
-	icon     string
-	color    string
-	advanced bool
+	id                    string
+	name                  string
+	address               string
+	key                   string
+	ca                    string
+	icon                  string
+	color                 string
+	advanced              bool
+	forwardAuthOnRedirect bool
 	// flavor is the kind of server: flavorAuto has it detected on test
 	// or save.
 	flavor     int
@@ -56,7 +57,7 @@ const (
 )
 
 func (e *instanceEditor) input() core.InstanceInput {
-	in := core.InstanceInput{Name: e.name, Address: e.address, Key: strings.TrimSpace(e.key), CACertPEM: e.ca, Icon: e.icon, Color: e.color}
+	in := core.InstanceInput{Name: e.name, Address: e.address, Key: strings.TrimSpace(e.key), CACertPEM: e.ca, ForwardAuthOnRedirect: e.forwardAuthOnRedirect, Icon: e.icon, Color: e.color}
 	if e.flavor == flavorPlus {
 		in.Flavor, in.ManagerURL, in.ManagerKey = store.FlavorManagerPlus, e.managerURL, strings.TrimSpace(e.managerKey)
 	}
@@ -66,7 +67,7 @@ func (e *instanceEditor) input() core.InstanceInput {
 // editorFor is the editor of an instance, or of a new one from a profile
 // that has no ID (an imported one).
 func editorFor(p store.InstanceProfile) instanceEditor {
-	e := instanceEditor{open: true, id: p.ID, name: p.Name, ca: p.CACertPEM, icon: p.Icon, color: p.Color, advanced: p.CACertPEM != "", flavor: flavorOfficial}
+	e := instanceEditor{open: true, id: p.ID, name: p.Name, ca: p.CACertPEM, forwardAuthOnRedirect: p.ForwardAuthOnRedirect, icon: p.Icon, color: p.Color, advanced: p.CACertPEM != "" || p.ForwardAuthOnRedirect, flavor: flavorOfficial}
 	if p.BaseURL != "" {
 		e.address = cpa.RootURL(p.BaseURL)
 	}
@@ -96,7 +97,7 @@ func detect(ctx context.Context, svc *core.Service, in core.InstanceInput) error
 	}
 	d := &detected{det: det}
 	if k := strings.TrimSpace(in.Key); det.ManagerPlus && strings.HasPrefix(k, "cpamp_") {
-		d.cpaAddress, _ = svc.ManagerCPAAddress(ctx, in.Address, k, in.CACertPEM)
+		d.cpaAddress, _ = svc.ManagerCPAAddress(ctx, cpamp.Options{BaseURL: in.Address, AdminKey: k, CACertPEM: []byte(in.CACertPEM), ForwardAuthOnRedirect: in.ForwardAuthOnRedirect})
 	}
 	return d
 }
@@ -212,7 +213,7 @@ func instancesPage(c *ui.Context, env *PageEnv) {
 				if PillButton(c, icActivity, T("测试", "Test"), test.Running).Clicked() {
 					id := p.ID
 					Run(env.Win, test, 0, func(ctx context.Context) error {
-						return a.Svc.TestConnection(ctx, core.InstanceInput{Name: p.Name, Address: p.BaseURL, CACertPEM: p.CACertPEM, Flavor: p.Flavor, ManagerURL: p.ManagerURL}, id)
+						return a.Svc.TestConnection(ctx, core.InstanceInput{Name: p.Name, Address: p.BaseURL, CACertPEM: p.CACertPEM, ForwardAuthOnRedirect: p.ForwardAuthOnRedirect, Flavor: p.Flavor, ManagerURL: p.ManagerURL}, id)
 					}, nil)
 				}
 				pause, pauseIcon := T("暂停", "Pause"), icPause
@@ -249,8 +250,10 @@ func instancesPage(c *ui.Context, env *PageEnv) {
 			if ui.AlertDialog(c, &st.removeOpen, T("删除实例？", "Remove instance?"), msg, T("取消", "Cancel"), T("确认删除", "Remove")) == 1 {
 				id := p.ID
 				st.op.Err = a.Svc.RemoveInstance(id)
-				a.dropInstanceState(id)
-				delete(st.tests, id)
+				if st.op.Err == nil {
+					a.dropInstanceState(id)
+					delete(st.tests, id)
+				}
 			}
 		} else {
 			st.removeOpen = false
@@ -268,7 +271,7 @@ func instanceEditorView(c *ui.Context, env *PageEnv, st *instancesState) {
 		// Imported instances come one at a time, each needing its key.
 		next := st.imports[0]
 		st.imports = st.imports[1:]
-		*e = editorFor(store.InstanceProfile{Name: next.Name, BaseURL: next.BaseURL, CACertPEM: next.CACertPEM, Icon: next.Icon, Color: next.Color, Flavor: next.Flavor, ManagerURL: next.ManagerURL})
+		*e = editorFor(store.InstanceProfile{Name: next.Name, BaseURL: next.BaseURL, CACertPEM: next.CACertPEM, ForwardAuthOnRedirect: next.ForwardAuthOnRedirect, Icon: next.Icon, Color: next.Color, Flavor: next.Flavor, ManagerURL: next.ManagerURL})
 	}
 	if !e.open {
 		// The keys typed in are not kept once the dialog closes.
@@ -480,8 +483,19 @@ func instanceEditorFields(c *ui.Context, e *instanceEditor) {
 			ui.Text(c, warn).FontSize(12).TextColor(t.Warning)
 		}
 	}
-	ui.Checkbox(c.Key("adv"), &e.advanced, T("使用自定义 CA 证书（自签名 HTTPS）", "Use a custom CA certificate (self-signed HTTPS)"))
+	ui.Checkbox(c.Key("adv"), &e.advanced, T("高级设置", "Advanced settings"))
 	if e.advanced {
+		forwardLabel := T("重定向时继续携带授权信息", "Keep authorization on redirects")
+		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, forwardLabel).Grow(1).Basis(0)
+			ui.Switch(c.Key("forward-auth-on-redirect"), &e.forwardAuthOnRedirect).Label(forwardLabel)
+		})
+		warningColor := t.TextMuted
+		if e.forwardAuthOnRedirect {
+			warningColor = t.Warning
+		}
+		ui.Text(c, T("开启后，CPA 管理密钥或 Manager-Plus 管理员密钥会发送到重定向目标，包括其他域名；从 HTTPS 重定向到 HTTP 始终禁止。", "When enabled, the CPA management key or Manager-Plus admin key is sent to redirect targets, including other domains; redirects from HTTPS to HTTP are always blocked.")).FontSize(11).TextColor(warningColor)
+		ui.Text(c, T("自定义 CA 证书（自签名 HTTPS）", "Custom CA certificate (self-signed HTTPS)")).FontSize(12).FontWeight(600)
 		ui.TextArea(c.Key("ca"), &e.ca).Placeholder("-----BEGIN CERTIFICATE-----").Height(120).Font("monospace").FontSize(11)
 		ui.Text(c, T("证书校验始终开启；自定义 CA 只是额外信任此证书。", "Certificate verification always stays on; a custom CA is only trusted in addition.")).FontSize(11).TextColor(t.TextMuted)
 	}

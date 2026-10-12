@@ -33,11 +33,12 @@ type ClientFactory func(p store.InstanceProfile, key string) (*cpa.Client, error
 // DefaultClientFactory builds real clients.
 func DefaultClientFactory(p store.InstanceProfile, key string) (*cpa.Client, error) {
 	return cpa.New(cpa.Options{
-		InstanceID:    p.ID,
-		InstanceName:  p.Name,
-		BaseURL:       p.BaseURL,
-		ManagementKey: key,
-		CACertPEM:     []byte(p.CACertPEM),
+		InstanceID:            p.ID,
+		InstanceName:          p.Name,
+		BaseURL:               p.BaseURL,
+		ManagementKey:         key,
+		CACertPEM:             []byte(p.CACertPEM),
+		ForwardAuthOnRedirect: p.ForwardAuthOnRedirect,
 	})
 }
 
@@ -569,6 +570,9 @@ type InstanceInput struct {
 	// Key is the management key; empty keeps the stored key on update.
 	Key       string
 	CACertPEM string
+	// ForwardAuthOnRedirect allows credentials to follow redirects to a
+	// different host for deployments that require it.
+	ForwardAuthOnRedirect bool
 	// Icon and Color are the instance's mark, empty for the default.
 	Icon  string
 	Color string
@@ -589,7 +593,10 @@ func (in InstanceInput) profile(id string) (store.InstanceProfile, error) {
 	if name == "" {
 		name = strings.TrimPrefix(strings.TrimPrefix(cpa.RootURL(base), "http://"), "https://")
 	}
-	p := store.InstanceProfile{ID: id, Name: name, BaseURL: base, CACertPEM: strings.TrimSpace(in.CACertPEM), Icon: in.Icon, Color: in.Color}
+	p := store.InstanceProfile{
+		ID: id, Name: name, BaseURL: base, CACertPEM: strings.TrimSpace(in.CACertPEM),
+		ForwardAuthOnRedirect: in.ForwardAuthOnRedirect, Icon: in.Icon, Color: in.Color,
+	}
 	if in.Flavor == store.FlavorManagerPlus {
 		mu, err := cpamp.NormalizeURL(in.ManagerURL)
 		if err != nil {
@@ -606,7 +613,10 @@ func plusClient(p store.InstanceProfile, key string) (*cpamp.Client, error) {
 	if !p.ManagerPlus() {
 		return nil, nil
 	}
-	return cpamp.New(cpamp.Options{BaseURL: p.ManagerURL, AdminKey: key, CACertPEM: []byte(p.CACertPEM)})
+	return cpamp.New(cpamp.Options{
+		BaseURL: p.ManagerURL, AdminKey: key, CACertPEM: []byte(p.CACertPEM),
+		ForwardAuthOnRedirect: p.ForwardAuthOnRedirect,
+	})
 }
 
 // managerKey is the admin key an input gives, or the stored one.
@@ -714,16 +724,61 @@ func (s *Service) Detect(ctx context.Context, address, caPEM string) (Detection,
 
 // ManagerCPAAddress is the CPA address CPA-Manager-Plus collects from, to
 // fill in the CPA when the user gave the address of Manager-Plus.
-func (s *Service) ManagerCPAAddress(ctx context.Context, managerURL, key, caPEM string) (string, error) {
-	c, err := cpamp.New(cpamp.Options{BaseURL: managerURL, AdminKey: key, CACertPEM: []byte(caPEM)})
+func (s *Service) ManagerCPAAddress(ctx context.Context, opts cpamp.Options) (string, error) {
+	c, err := cpamp.New(opts)
 	if err != nil {
 		return "", err
 	}
 	return c.CPAAddress(ctx)
 }
 
+type secretBackup struct {
+	id     string
+	key    string
+	exists bool
+}
+
+type secretChange struct {
+	backup secretBackup
+	set    bool
+	key    string
+}
+
+func readSecretBackup(secrets store.SecretStore, id string) (secretBackup, error) {
+	key, err := secrets.Get(id)
+	if err == nil {
+		return secretBackup{id: id, key: key, exists: true}, nil
+	}
+	if errors.Is(err, store.ErrSecretNotFound) {
+		return secretBackup{id: id}, nil
+	}
+	return secretBackup{}, fmt.Errorf("read credential %q: %w", id, err)
+}
+
+func restoreSecrets(secrets store.SecretStore, backups []secretBackup) error {
+	var result error
+	for i := len(backups) - 1; i >= 0; i-- {
+		b := backups[i]
+		var err error
+		if b.exists {
+			err = secrets.Set(b.id, b.key)
+		} else {
+			err = secrets.Delete(b.id)
+		}
+		if err != nil {
+			result = errors.Join(result, fmt.Errorf("restore credential %q: %w", b.id, err))
+		}
+	}
+	return result
+}
+
+func secretChangeError(secrets store.SecretStore, id, action string, err error, attempted []secretBackup) error {
+	return errors.Join(fmt.Errorf("%s credential %q: %w", action, id, err), restoreSecrets(secrets, attempted))
+}
+
 // AddInstance confirms the management API answers, stores the key, then
-// saves the instance. Nothing is saved when any step fails.
+// saves the instance. Failures restore the previous credential state when
+// possible and include any cleanup error in the result.
 func (s *Service) AddInstance(ctx context.Context, input InstanceInput) (string, error) {
 	if strings.TrimSpace(input.Key) == "" {
 		return "", errors.New("management key is required")
@@ -736,13 +791,16 @@ func (s *Service) AddInstance(ctx context.Context, input InstanceInput) (string,
 	if err := s.TestConnection(ctx, input, ""); err != nil {
 		return "", err
 	}
+	mainBackup := secretBackup{id: id}
+	attempted := []secretBackup{mainBackup}
 	if err := s.opts.Secrets.Set(id, input.Key); err != nil {
-		return "", err
+		return "", secretChangeError(s.opts.Secrets, id, "store", err, attempted)
 	}
 	if p.ManagerPlus() {
-		if err := s.opts.Secrets.Set(store.ManagerKeyID(id), strings.TrimSpace(input.ManagerKey)); err != nil {
-			_ = s.opts.Secrets.Delete(id)
-			return "", err
+		managerID := store.ManagerKeyID(id)
+		attempted = append(attempted, secretBackup{id: managerID})
+		if err := s.opts.Secrets.Set(managerID, strings.TrimSpace(input.ManagerKey)); err != nil {
+			return "", secretChangeError(s.opts.Secrets, managerID, "store", err, attempted)
 		}
 	}
 	p.CreatedAt = s.opts.Now()
@@ -752,9 +810,7 @@ func (s *Service) AddInstance(ctx context.Context, input InstanceInput) (string,
 	next.Instances = append(next.Instances, p)
 	if err := s.saveLocked(next); err != nil {
 		s.mu.Unlock()
-		_ = s.opts.Secrets.Delete(id)
-		_ = s.opts.Secrets.Delete(store.ManagerKeyID(id))
-		return "", err
+		return "", errors.Join(err, restoreSecrets(s.opts.Secrets, attempted))
 	}
 	s.inst[id] = s.newInstance(p)
 	s.mu.Unlock()
@@ -767,64 +823,75 @@ func (s *Service) AddInstance(ctx context.Context, input InstanceInput) (string,
 // dropping responses of the old connection.
 func (s *Service) UpdateInstance(id string, input InstanceInput) error {
 	s.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			s.mu.Unlock()
+		}
+	}()
 	in := s.inst[id]
 	if in == nil {
-		s.mu.Unlock()
 		return ErrNoInstance
 	}
 	p, err := input.profile(id)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
 	old := in.profile
 	p.Order, p.Paused, p.CreatedAt = old.Order, old.Paused, old.CreatedAt
 	p.PinnedAccounts = old.PinnedAccounts
-	s.mu.Unlock()
 
 	if p.ManagerPlus() && strings.TrimSpace(input.ManagerKey) == "" {
 		if _, err := s.managerKey(input, id); err != nil {
 			return err
 		}
 	}
-	var oldKey, oldPlusKey string
+	var changes []secretChange
 	if input.Key != "" {
-		oldKey, _ = s.opts.Secrets.Get(id)
-		if err := s.opts.Secrets.Set(id, input.Key); err != nil {
+		backup, err := readSecretBackup(s.opts.Secrets, id)
+		if err != nil {
 			return err
 		}
+		changes = append(changes, secretChange{backup: backup, set: true, key: input.Key})
 	}
 	plusKey := strings.TrimSpace(input.ManagerKey)
 	if p.ManagerPlus() && plusKey != "" {
-		oldPlusKey, _ = s.opts.Secrets.Get(store.ManagerKeyID(id))
-		if err := s.opts.Secrets.Set(store.ManagerKeyID(id), plusKey); err != nil {
-			if input.Key != "" && oldKey != "" {
-				_ = s.opts.Secrets.Set(id, oldKey)
-			}
+		backup, err := readSecretBackup(s.opts.Secrets, store.ManagerKeyID(id))
+		if err != nil {
 			return err
+		}
+		changes = append(changes, secretChange{backup: backup, set: true, key: plusKey})
+	} else if !p.ManagerPlus() && old.ManagerPlus() {
+		backup, err := readSecretBackup(s.opts.Secrets, store.ManagerKeyID(id))
+		if err != nil {
+			return err
+		}
+		changes = append(changes, secretChange{backup: backup})
+	}
+	var attempted []secretBackup
+	for _, change := range changes {
+		attempted = append(attempted, change.backup)
+		action := "delete"
+		if change.set {
+			action = "store"
+			err = s.opts.Secrets.Set(change.backup.id, change.key)
+		} else {
+			err = s.opts.Secrets.Delete(change.backup.id)
+		}
+		if err != nil {
+			return secretChangeError(s.opts.Secrets, change.backup.id, action, err, attempted)
 		}
 	}
 
-	s.mu.Lock()
 	next := s.settings.Clone()
 	if q := next.Instance(id); q != nil {
 		*q = p
 	}
 	if err := s.saveLocked(next); err != nil {
-		s.mu.Unlock()
-		if input.Key != "" && oldKey != "" {
-			// Nothing changed, the key included.
-			_ = s.opts.Secrets.Set(id, oldKey)
-		}
-		if plusKey != "" && oldPlusKey != "" {
-			_ = s.opts.Secrets.Set(store.ManagerKeyID(id), oldPlusKey)
-		}
-		return err
+		return errors.Join(err, restoreSecrets(s.opts.Secrets, attempted))
 	}
-	if !p.ManagerPlus() && old.ManagerPlus() {
-		_ = s.opts.Secrets.Delete(store.ManagerKeyID(id))
-	}
-	reconnect := input.Key != "" || p.BaseURL != old.BaseURL || p.CACertPEM != old.CACertPEM
+	reconnect := input.Key != "" || p.BaseURL != old.BaseURL || p.CACertPEM != old.CACertPEM ||
+		p.ForwardAuthOnRedirect != old.ForwardAuthOnRedirect
 	in.profile = p
 	in.snap.Profile = p
 	if !reconnect && (p.ManagerPlus() != old.ManagerPlus() || p.ManagerURL != old.ManagerURL || plusKey != "") {
@@ -848,6 +915,7 @@ func (s *Service) UpdateInstance(id string, input InstanceInput) error {
 	} else if in.client != nil && p.Name != old.Name {
 		s.connect(in) // errors name the instance
 	}
+	locked = false
 	s.mu.Unlock()
 	s.notify()
 	if reconnect {
@@ -860,10 +928,34 @@ func (s *Service) UpdateInstance(id string, input InstanceInput) error {
 // and its stored key. Credentials on the server are untouched.
 func (s *Service) RemoveInstance(id string) error {
 	s.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			s.mu.Unlock()
+		}
+	}()
 	in := s.inst[id]
 	if in == nil {
-		s.mu.Unlock()
 		return ErrNoInstance
+	}
+	mainBackup, err := readSecretBackup(s.opts.Secrets, id)
+	if err != nil {
+		return err
+	}
+	backups := []secretBackup{mainBackup}
+	if in.profile.ManagerPlus() {
+		managerBackup, err := readSecretBackup(s.opts.Secrets, store.ManagerKeyID(id))
+		if err != nil {
+			return err
+		}
+		backups = append(backups, managerBackup)
+	}
+	var attempted []secretBackup
+	for _, backup := range backups {
+		attempted = append(attempted, backup)
+		if err := s.opts.Secrets.Delete(backup.id); err != nil {
+			return secretChangeError(s.opts.Secrets, backup.id, "delete", err, attempted)
+		}
 	}
 	next := s.settings.Clone()
 	next.Instances = slices.DeleteFunc(next.Instances, func(p store.InstanceProfile) bool { return p.ID == id })
@@ -871,8 +963,7 @@ func (s *Service) RemoveInstance(id string) error {
 		next.DefaultInstanceID = ""
 	}
 	if err := s.saveLocked(next); err != nil {
-		s.mu.Unlock()
-		return err
+		return errors.Join(err, restoreSecrets(s.opts.Secrets, attempted))
 	}
 	if in.cancel != nil {
 		in.cancel()
@@ -882,15 +973,9 @@ func (s *Service) RemoveInstance(id string) error {
 	if s.active == id {
 		s.active = ""
 	}
+	locked = false
 	s.mu.Unlock()
-	err := s.opts.Secrets.Delete(id)
-	if in.profile.ManagerPlus() {
-		err = errors.Join(err, s.opts.Secrets.Delete(store.ManagerKeyID(id)))
-	}
 	s.notify()
-	if err != nil {
-		return fmt.Errorf("instance removed, but its key could not be deleted from the credential store: %w", err)
-	}
 	return nil
 }
 

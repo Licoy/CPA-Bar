@@ -1,10 +1,14 @@
 package core
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/licoy/cpa-bar/internal/cpamp"
 	"github.com/licoy/cpa-bar/internal/cpamp/cpamptest"
 	"github.com/licoy/cpa-bar/internal/store"
 )
@@ -77,6 +81,89 @@ func TestManagerPlusInstance(t *testing.T) {
 	}
 }
 
+func TestSwitchFromManagerPlusKeepsCredentialAndProfileWhenDeleteFails(t *testing.T) {
+	f := newFakeCPA(t, "good")
+	managerID := store.ManagerKeyID("i0")
+	secrets := &faultSecrets{m: map[string]string{"i0": "good", managerID: "admin"}}
+	e := newEnvWith(t, func(o *Options) {
+		o.Secrets = secrets
+		p := &o.Settings.(*fakeSettings).s.Instances[0]
+		p.Flavor = store.FlavorManagerPlus
+		p.ManagerURL = "http://manager.invalid"
+	}, f)
+	deleteErr := errors.New("manager key delete failed")
+	deleteCalls := 0
+	secrets.deleteHook = func(id string) error {
+		deleteCalls++
+		delete(secrets.m, id)
+		if deleteCalls == 1 {
+			return deleteErr
+		}
+		return nil
+	}
+	input := InstanceInput{Name: "N0", Address: f.srv.URL, Flavor: store.FlavorOfficial}
+	if err := e.svc.UpdateInstance("i0", input); !errors.Is(err, deleteErr) {
+		t.Fatalf("err = %v", err)
+	}
+	if !e.svc.Settings().Instances[0].ManagerPlus() || secrets.m[managerID] != "admin" {
+		t.Fatalf("failed switch changed profile or credential: %+v, %v", e.svc.Settings().Instances[0], secrets.m)
+	}
+	if err := e.svc.UpdateInstance("i0", input); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if e.svc.Settings().Instances[0].ManagerPlus() {
+		t.Error("profile still uses Manager-Plus after retry")
+	}
+	if _, ok := secrets.m[managerID]; ok {
+		t.Error("Manager-Plus credential remains after retry")
+	}
+}
+
+func TestClientFactoriesForwardAuthorizationWhenEnabled(t *testing.T) {
+	var auth []string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = append(auth, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v8/management/config":
+			_, _ = w.Write([]byte(`{}`))
+		case "/v8/management/credentials":
+			_, _ = w.Write([]byte(`{"files":[]}`))
+		case "/usage-service/config":
+			_, _ = w.Write([]byte(`{"config":{"cpaConnection":{"cpaBaseUrl":"http://cpa:8317"}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer target.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer redirector.Close()
+
+	c, err := DefaultClientFactory(store.InstanceProfile{
+		BaseURL: redirector.URL, ForwardAuthOnRedirect: true,
+	}, "cpa-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Probe(bg); err != nil {
+		t.Fatal(err)
+	}
+	pc, err := plusClient(store.InstanceProfile{
+		Flavor: store.FlavorManagerPlus, ManagerURL: redirector.URL, ForwardAuthOnRedirect: true,
+	}, "manager-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pc.CPAAddress(bg); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Bearer cpa-key", "Bearer cpa-key", "Bearer manager-key"}; !slices.Equal(auth, want) {
+		t.Errorf("redirect authorization = %v, want %v", auth, want)
+	}
+}
+
 // Detection reads /health: Manager-Plus at the address, or CPA.
 func TestDetect(t *testing.T) {
 	f := newFakeCPA(t, "good")
@@ -92,7 +179,7 @@ func TestDetect(t *testing.T) {
 		t.Errorf("detection asked %q and %q", mp.Paths(), f.requestLog())
 	}
 	mp.CPAAddress = "http://cpa:8317"
-	if a, err := e.svc.ManagerCPAAddress(bg, mp.URL, "k", ""); err != nil || a != "http://cpa:8317" {
+	if a, err := e.svc.ManagerCPAAddress(bg, cpamp.Options{BaseURL: mp.URL, AdminKey: "k"}); err != nil || a != "http://cpa:8317" {
 		t.Errorf("CPA address %q, %v", a, err)
 	}
 }
