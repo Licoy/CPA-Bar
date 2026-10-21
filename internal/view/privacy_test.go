@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/licoy/cpa-bar/internal/core"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -74,6 +75,70 @@ func TestPanelPrivacy(t *testing.T) {
 	tt.Frame()
 	if got := tt.Clipboard(); !strings.HasPrefix(got, "http://127.0.0.1:") {
 		t.Errorf("copied %q, want the real address", got)
+	}
+}
+
+func TestPanelPrivacyButton(t *testing.T) {
+	for _, detail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "list", true: "detail"}[detail], func(t *testing.T) {
+			a, id := newTestApp(t, true)
+			defer SetPrivacy(false)
+			if detail {
+				a.panelInstance = id
+			}
+			tt := ui.NewTester(a.panelView, panelWidth, panelHeight)
+			button, foundButton := tt.Find("开启隐私模式")
+			refresh, foundRefresh := tt.Find("刷新")
+			if !foundButton || !foundRefresh || button.X+button.W > refresh.X || button.Y != refresh.Y {
+				t.Fatalf("privacy button must precede refresh in the toolbar: privacy=%v refresh=%v", button, refresh)
+			}
+			for _, on := range []bool{true, false} {
+				label := map[bool]string{true: "开启隐私模式", false: "关闭隐私模式"}[on]
+				if err := tt.Click(label); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				if a.Svc.Settings().Privacy != on || Private() != on {
+					t.Fatalf("privacy setting and live state must both be %v", on)
+				}
+				if !detail {
+					if err := tt.Click("Home"); err != nil {
+						t.Fatal(err)
+					}
+					tt.Frame()
+				}
+				if tt.HasText("ok@example.com") == on || tt.HasText("o****@e***.com") != on {
+					t.Fatalf("privacy=%v: unexpected account text: %q", on, tt.Texts())
+				}
+				if !detail {
+					if err := tt.Click("返回"); err != nil {
+						t.Fatal(err)
+					}
+					tt.Frame()
+				}
+			}
+		})
+	}
+}
+
+func TestPanelPrivacySaveFailureHasNoEffect(t *testing.T) {
+	svc, err := core.New(core.Options{Settings: failingSettings{store.Defaults()}, Secrets: &store.MemorySecrets{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	a := NewApp(svc)
+	defer SetPrivacy(false)
+	tt := ui.NewTester(a.panelView, panelWidth, panelHeight)
+	if err := tt.Click("开启隐私模式"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.Svc.Settings().Privacy || Private() {
+		t.Fatal("failed save changed privacy mode")
+	}
+	if !tt.HasText("save settings: disk full") {
+		t.Fatalf("save failure is not visible: %q", tt.Texts())
 	}
 }
 

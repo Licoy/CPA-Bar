@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/licoy/cpa-bar/internal/core"
 	"github.com/licoy/cpa-bar/internal/cpa"
+	"github.com/licoy/cpa-bar/internal/store"
 )
 
 // The light panel next to the tray icon: an overview of all instances, or
@@ -72,7 +73,7 @@ func (a *App) panelView(c *ui.Context) {
 }
 
 // panelTop heads the panel: the logo, the instance shown, Back from an
-// instance to all, Refresh and the project's page.
+// instance to all, privacy mode, Refresh and the project's page.
 func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 	t := c.Theme()
 	ui.Row(c).Gap(8).Padding(10, 10, 6, 10).AlignItems(ui.Center).Children(func() {
@@ -95,6 +96,7 @@ func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 		if a.panelInstance != "" {
 			a.defaultButton(c, a.panelInstance)
 		}
+		a.panelPrivacyButton(c)
 		if len(snaps) > 0 && BusyPillButton(c, icRefresh, "", refreshing, false).Label(T("刷新", "Refresh")).Tooltip(T("立即刷新", "Refresh now")).Clicked() {
 			if a.panelInstance == "" {
 				a.Svc.RefreshAll()
@@ -106,6 +108,22 @@ func (a *App) panelTop(c *ui.Context, snaps []core.InstanceSnapshot) {
 			c.OpenURL(RepoURL)
 		}
 	})
+}
+
+func (a *App) panelPrivacyButton(c *ui.Context) {
+	on := a.Svc.Settings().Privacy
+	label := T("开启隐私模式", "Enable privacy mode")
+	if on {
+		label = T("关闭隐私模式", "Disable privacy mode")
+	}
+	if ToggleIconButton(c.Key("privacy"), cfgIcEye, cfgIcEyeOff, on).Label(label).Tooltip(label).Clicked() {
+		if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.Privacy = !on }); err != nil {
+			c.Toast(ErrorText(err))
+			return
+		}
+		SetPrivacy(!on)
+		a.changed()
+	}
 }
 
 // defaultButton makes the instance the default one, which the panel opens
