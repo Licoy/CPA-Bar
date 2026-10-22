@@ -16,12 +16,13 @@ import (
 // The quota of the accounts, shown on the accounts page and in the panel.
 // Each instance keeps a cache of what was read, by auth index, shared by
 // both windows. Only the rows on screen read their quota, a few at a time,
-// again when it is older than quotaTTL; failures wait longer and longer.
+// again at the configured quota interval; failures wait longer and longer.
 // Actions (a reset that spends a limited grant…) run only when the user
 // confirms them, and are never retried.
 
 const (
-	quotaTTL = 5 * time.Minute
+	// Plugin discovery keeps its own metadata cache interval.
+	quotaPluginsTTL = 5 * time.Minute
 	// quotaParallel bounds the reads running at once per instance.
 	quotaParallel = 3
 	// quotaBackoff is the first wait after a failure, doubled after each
@@ -100,6 +101,7 @@ func (a *App) quotaRedraw() {
 // quotaEntryFor returns the cached quota of an account and starts a read
 // when it is due. ok is false when the account has no quota to read.
 func (a *App) quotaEntryFor(s core.InstanceSnapshot, cr cpa.Credential, now time.Time) (*quotaEntry, *quotaInstance, bool) {
+	a.syncQuotaWake()
 	if !quota.Supported(cr) {
 		return nil, nil, false
 	}
@@ -115,22 +117,32 @@ func (a *App) quotaEntryFor(s core.InstanceSnapshot, cr cpa.Credential, now time
 	}
 	if q.passive {
 		e.observe(cr)
-	} else if e.due(now) {
+	} else if e.due(now, time.Duration(a.Svc.Settings().QuotaRefreshMinutes)*time.Minute) {
 		a.quotaFetch(q, e, cr, false)
+	}
+	if !q.passive {
+		a.scheduleQuotaWake(e, now)
 	}
 	return e, q, true
 }
 
 // due reports that an entry should be read again.
-func (e *quotaEntry) due(now time.Time) bool {
+func (e *quotaEntry) due(now time.Time, interval time.Duration) bool {
 	if e.fetching || e.acting {
 		return false
 	}
+	return !now.Before(e.nextRead(interval))
+}
+
+func (e *quotaEntry) nextRead(interval time.Duration) time.Time {
 	if e.failures > 0 {
 		wait := quotaBackoff << min(e.failures-1, 8)
-		return now.Sub(e.failedAt) >= min(wait, quotaBackoffMax)
+		return e.failedAt.Add(min(wait, quotaBackoffMax))
 	}
-	return e.at.IsZero() || now.Sub(e.at) >= quotaTTL
+	if e.at.IsZero() {
+		return time.Time{}
+	}
+	return e.at.Add(interval)
 }
 
 // quotaFetch reads an account's quota. manual reads skip the bound on
@@ -197,7 +209,7 @@ func (a *App) quotaPlugins(q *quotaInstance, manual bool) bool {
 	switch {
 	case q.pluginsBusy:
 		return known
-	case known && now.Sub(q.pluginsAt) < quotaTTL:
+	case known && now.Sub(q.pluginsAt) < quotaPluginsTTL:
 		return true
 	case q.pluginsErr != nil && !manual && now.Sub(q.pluginsAt) < quotaBackoff:
 		return false

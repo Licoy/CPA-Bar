@@ -50,7 +50,12 @@ type App struct {
 	panelSafeArea panelInsets
 	panelResize   panelResize
 	// quotas caches the quota of the accounts, per instance.
-	quotas map[string]*quotaInstance
+	quotas           map[string]*quotaInstance
+	quotaWake        *time.Timer
+	quotaWakeAt      time.Time
+	quotaWakeID      uint64
+	quotaWakeMinutes int
+	quotaWakePassive bool
 
 	// selected is the instance of the management window, page its page.
 	selected string
@@ -153,7 +158,7 @@ func (a *App) Ready() {
 	}
 	mygo.Power.OnSuspend(a.Svc.Suspend)
 	mygo.Power.OnResume(a.Svc.Resume)
-	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting = true })
+	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting = true; a.cancelQuotaWake() })
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 		if a.tray != nil {
 			a.tray.Destroy()
@@ -213,6 +218,7 @@ func overviewLine(o core.Overview) string {
 
 // changed runs on the main thread after every service change.
 func (a *App) changed() {
+	a.syncQuotaWake()
 	setPrivacyHosts(a.Svc.Settings().Instances)
 	a.updateTray()
 	a.invalidate()

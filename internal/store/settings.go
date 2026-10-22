@@ -106,6 +106,8 @@ type Settings struct {
 	ActiveRefresh     int `json:"activeRefresh"`
 	// PassiveQuota follows quota observations recorded by CPA.
 	PassiveQuota bool `json:"passiveQuota,omitempty"`
+	// QuotaRefreshMinutes is the interval between visible account quota reads.
+	QuotaRefreshMinutes int `json:"quotaRefreshMinutes"`
 
 	LaunchAtLogin bool `json:"launchAtLogin"`
 	Notifications bool `json:"notifications"`
@@ -137,18 +139,22 @@ const (
 	trayStyleBattery = "battery"
 )
 
+// MaxQuotaRefreshMinutes is the largest minute interval time.Duration can hold.
+const MaxQuotaRefreshMinutes = int((1<<63 - 1) / time.Minute)
+
 // Defaults returns the settings of a first launch.
 func Defaults() Settings {
 	return Settings{
-		Version:           SchemaVersion,
-		Instances:         []InstanceProfile{},
-		Appearance:        AppearanceSystem,
-		Language:          LanguageAuto,
-		BackgroundRefresh: 30,
-		ActiveRefresh:     10,
-		Notifications:     true,
-		TrayText:          true,
-		AutoCheckUpdates:  true,
+		Version:             SchemaVersion,
+		Instances:           []InstanceProfile{},
+		Appearance:          AppearanceSystem,
+		Language:            LanguageAuto,
+		BackgroundRefresh:   30,
+		ActiveRefresh:       10,
+		QuotaRefreshMinutes: 5,
+		Notifications:       true,
+		TrayText:            true,
+		AutoCheckUpdates:    true,
 	}
 }
 
@@ -173,6 +179,9 @@ func (s *Settings) Normalize() {
 	}
 	if s.ActiveRefresh < 3 {
 		s.ActiveRefresh = d.ActiveRefresh
+	}
+	if s.QuotaRefreshMinutes < 1 || s.QuotaRefreshMinutes > MaxQuotaRefreshMinutes {
+		s.QuotaRefreshMinutes = d.QuotaRefreshMinutes
 	}
 	slices.SortStableFunc(s.Instances, func(a, b InstanceProfile) int { return a.Order - b.Order })
 	for i := range s.Instances {

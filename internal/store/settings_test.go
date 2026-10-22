@@ -579,3 +579,36 @@ func TestPassiveQuotaDefaultsOff(t *testing.T) {
 		t.Fatal("passive quota must default off")
 	}
 }
+
+func TestQuotaRefreshSettings(t *testing.T) {
+	if got := Defaults().QuotaRefreshMinutes; got != 5 {
+		t.Fatalf("default = %d, want 5", got)
+	}
+	f := newFile(t)
+	writeRaw(t, f, `{"version":1,"instances":[]}`)
+	got, err := f.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.QuotaRefreshMinutes != 5 {
+		t.Fatal("old configuration did not get five-minute default")
+	}
+	for _, minutes := range []int{1, 17, MaxQuotaRefreshMinutes} {
+		got.QuotaRefreshMinutes = minutes
+		if err := f.Save(got); err != nil {
+			t.Fatal(err)
+		}
+		loaded, err := f.Load()
+		if err != nil || loaded.QuotaRefreshMinutes != minutes {
+			t.Fatalf("round trip %d: %+v, %v", minutes, loaded, err)
+		}
+	}
+	for _, minutes := range []int{0, -1, MaxQuotaRefreshMinutes + 1} {
+		s := Defaults()
+		s.QuotaRefreshMinutes = minutes
+		s.Normalize()
+		if s.QuotaRefreshMinutes != 5 {
+			t.Fatalf("invalid %d normalized to %d", minutes, s.QuotaRefreshMinutes)
+		}
+	}
+}

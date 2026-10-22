@@ -37,6 +37,7 @@ func versionLabel() string {
 type settingsState struct {
 	background string
 	active     string
+	quota      string
 	loaded     bool
 	// login is read from the system once: the user may change it there.
 	login    bool
@@ -51,6 +52,7 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 	if !st.loaded {
 		st.background = strconv.Itoa(cur.BackgroundRefresh)
 		st.active = strconv.Itoa(cur.ActiveRefresh)
+		st.quota = strconv.Itoa(cur.QuotaRefreshMinutes)
 		st.login = system.OpenAtLogin()
 		st.loaded = true
 	}
@@ -173,18 +175,25 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 		row(T("当前实例刷新间隔（秒）", "Active instance interval (s)"), T("管理窗口或面板正在查看的实例，不少于 3 秒。", "The instance the window or panel shows; at least 3 s."), func() {
 			ui.TextInput(c.Key("act"), &st.active).Width(90).Label(T("当前实例刷新间隔（秒）", "Active instance interval (s)"))
 		})
+		row(T("额度刷新间隔（分钟）", "Quota refresh interval (min)"), T("默认 5 分钟，至少 1 分钟，账号显示时按此间隔查询额度；开启被动额度用量更新后不生效", "Defaults to 5 minutes, at least 1 minute; queries quota at this interval while accounts are displayed, and has no effect with passive quota updates enabled"), func() {
+			ui.TextInput(c.Key("quota-interval"), &st.quota).Width(90).Label(T("额度刷新间隔（分钟）", "Quota refresh interval (min)"))
+		})
 		row("", "", func() {
 			if ui.Button(c, T("应用", "Apply")).Radius(999).Clicked() {
 				bg, err1 := strconv.Atoi(st.background)
 				ac, err2 := strconv.Atoi(st.active)
+				qm, quotaErr := strconv.Atoi(st.quota)
 				switch {
 				case err1 != nil || err2 != nil:
 					st.err = fmt.Errorf("%s", T("请输入整数秒数", "Enter whole seconds"))
+				case quotaErr != nil || qm < 1 || qm > store.MaxQuotaRefreshMinutes:
+					st.err = fmt.Errorf("%s", T("请输入有效的整数分钟数，且不少于 1 分钟", "Enter a valid whole number of minutes, at least 1"))
 				case bg < 10 || ac < 3:
 					st.err = fmt.Errorf("%s", T("后台间隔至少 10 秒，当前实例间隔至少 3 秒", "The background interval is at least 10 s and the active one at least 3 s"))
 				default:
-					save(func(s *store.Settings) { s.BackgroundRefresh, s.ActiveRefresh = bg, ac })
+					save(func(s *store.Settings) { s.BackgroundRefresh, s.ActiveRefresh, s.QuotaRefreshMinutes = bg, ac, qm })
 					if st.err == nil {
+						a.changed()
 						c.Toast(T("已应用", "Applied"))
 					}
 				}
