@@ -123,7 +123,7 @@ func quotaApp(t *testing.T) (*App, string, *quotaCPA, *uiQueue) {
 
 // The panel reads the quota of the accounts it shows, and shows the plan,
 // the resets left and each limit with what is left and when it refills.
-// Disabled accounts are asked about too.
+// Disabled accounts keep their quota paused until an explicit refresh.
 func TestPanelShowsQuota(t *testing.T) {
 	a, id, srv, q := quotaApp(t)
 	a.panelInstance = id
@@ -146,9 +146,9 @@ func TestPanelShowsQuota(t *testing.T) {
 	if !found {
 		t.Errorf("no reset time; texts: %q", tt.Texts())
 	}
-	// usage + grants, of the enabled account and the disabled one.
-	if n := srv.count("GET https://api.anthropic.com/api/oauth/usage"); n != 4 {
-		t.Errorf("%d usage reads, want 4", n)
+	// Usage + grants, of the enabled account only.
+	if n := srv.count("GET https://api.anthropic.com/api/oauth/usage"); n != 2 {
+		t.Errorf("%d usage reads, want 2", n)
 	}
 
 	// A refresh within the TTL reads nothing more; the button reads again.

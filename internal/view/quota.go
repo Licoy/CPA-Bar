@@ -117,10 +117,10 @@ func (a *App) quotaEntryFor(s core.InstanceSnapshot, cr cpa.Credential, now time
 	}
 	if q.passive {
 		e.observe(cr)
-	} else if e.due(now, time.Duration(a.Svc.Settings().QuotaRefreshMinutes)*time.Minute) {
-		a.quotaFetch(q, e, cr, false)
-	}
-	if !q.passive {
+	} else if cr.Health() != cpa.HealthDisabled {
+		if e.due(now, time.Duration(a.Svc.Settings().QuotaRefreshMinutes)*time.Minute) {
+			a.quotaFetch(q, e, cr, false)
+		}
 		a.scheduleQuotaWake(e, now)
 	}
 	return e, q, true
@@ -148,7 +148,7 @@ func (e *quotaEntry) nextRead(interval time.Duration) time.Time {
 // quotaFetch reads an account's quota. manual reads skip the bound on
 // parallel reads.
 func (a *App) quotaFetch(q *quotaInstance, e *quotaEntry, cr cpa.Credential, manual bool) {
-	if !a.quotaCurrent(q) || (!manual && q.passive) || e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
+	if !a.quotaCurrent(q) || (!manual && (q.passive || cr.Health() == cpa.HealthDisabled)) || e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
 		return
 	}
 	if quota.NeedsPlugins(cr) && !a.quotaPlugins(q, manual) {
@@ -404,6 +404,8 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 			ui.Text(c, fmt.Sprintf(T("读取额度失败：%s", "Could not read the quota: %s"), quotaErrText(e.err))).FontSize(12).TextColor(t.Danger).MaxLines(3).Selectable()
 		case r == nil && q.passive && !e.fetching:
 			ui.Text(c, T("等待 CPA 额度数据", "Waiting for CPA quota data")).FontSize(12).TextColor(t.TextMuted)
+		case r == nil && !q.passive && cr.Health() == cpa.HealthDisabled && !e.fetching:
+			ui.Text(c, T("账号已停用，额度自动刷新已暂停", "Account disabled; automatic quota refresh paused")).FontSize(12).TextColor(t.TextMuted)
 		case r == nil:
 			ui.Text(c, T("正在读取额度…", "Reading the quota…")).FontSize(12).TextColor(t.TextMuted)
 		default:
