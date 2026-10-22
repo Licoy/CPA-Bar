@@ -104,6 +104,8 @@ type Settings struct {
 	// Refresh intervals in seconds.
 	BackgroundRefresh int `json:"backgroundRefresh"`
 	ActiveRefresh     int `json:"activeRefresh"`
+	// PassiveQuota follows quota observations recorded by CPA.
+	PassiveQuota bool `json:"passiveQuota,omitempty"`
 
 	LaunchAtLogin bool `json:"launchAtLogin"`
 	Notifications bool `json:"notifications"`

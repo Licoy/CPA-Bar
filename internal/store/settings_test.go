@@ -57,6 +57,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in.Appearance = AppearanceDark
 	in.Language = LanguageEN
 	in.PanelOpaque = true
+	in.PassiveQuota = true
 	in.BackgroundRefresh = 60
 	in.ActiveRefresh = 5
 	in.LaunchAtLogin = true
@@ -564,5 +565,17 @@ func TestNormalizeTrayStyle(t *testing.T) {
 		if s.TrayStyle != want {
 			t.Errorf("%q normalizes to %q, want %q", in, s.TrayStyle, want)
 		}
+	}
+}
+
+func TestPassiveQuotaDefaultsOff(t *testing.T) {
+	f := newFile(t)
+	writeRaw(t, f, `{"version":1,"instances":[]}`)
+	got, err := f.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PassiveQuota || Defaults().PassiveQuota {
+		t.Fatal("passive quota must default off")
 	}
 }

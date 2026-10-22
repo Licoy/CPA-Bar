@@ -2,6 +2,8 @@ package view
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
@@ -216,4 +218,62 @@ func TestUnsupportedOpaqueSettingIsVisibleAndCanBeCleared(t *testing.T) {
 	if a.Svc.Settings().PanelOpaque {
 		t.Error("old opaque setting was not cleared")
 	}
+}
+
+func TestPassiveQuotaSwitch(t *testing.T) {
+	defer SetLanguage(store.LanguageZH)
+	_ = SetLanguage(store.LanguageZH)
+	a, _ := newTestApp(t, false)
+	a.page = "settings"
+	tt := ui.NewTester(a.managerView, managerWidth, 1800)
+	if a.Svc.Settings().PassiveQuota {
+		t.Fatal("passive quota is enabled by default")
+	}
+	clickPassiveQuotaSwitch(t, tt, "被动额度用量更新")
+	tt.Frame()
+	if !a.Svc.Settings().PassiveQuota {
+		t.Fatal("switch did not enable passive quota")
+	}
+	if dir := os.Getenv("CPABAR_SNAPSHOTS"); dir != "" {
+		saveSnapshot(t, filepath.Join(dir, "settings-passive-quota.png"), tt)
+	}
+	if err := tt.Click("English"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	clickPassiveQuotaSwitch(t, tt, "Passive quota updates")
+	tt.Frame()
+	if a.Svc.Settings().PassiveQuota {
+		t.Fatal("switch did not disable passive quota")
+	}
+}
+
+func TestPassiveQuotaSwitchSaveFailure(t *testing.T) {
+	_ = SetLanguage(store.LanguageZH)
+	svc, err := core.New(core.Options{Settings: failingSettings{store.Defaults()}, Secrets: &store.MemorySecrets{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	a := NewApp(svc)
+	a.page = "settings"
+	tt := ui.NewTester(a.managerView, managerWidth, 1800)
+	clickPassiveQuotaSwitch(t, tt, "被动额度用量更新")
+	tt.Frame()
+	if a.Svc.Settings().PassiveQuota {
+		t.Fatal("failed save changed passive quota mode")
+	}
+	if !tt.HasText("save settings: disk full") {
+		t.Fatalf("missing save error: %q", tt.Texts())
+	}
+}
+
+func clickPassiveQuotaSwitch(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	row, ok1 := tt.Find(label)
+	edge, ok2 := tt.Find("English")
+	if !ok1 || !ok2 {
+		t.Fatalf("missing passive switch: %q", tt.Texts())
+	}
+	tt.ClickAt(edge.X+edge.W-6, row.Y+row.H)
 }

@@ -158,6 +158,15 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 	})
 
 	settingsGroup(c, icRefresh, TintGreen, T("刷新", "Refresh"), func(row func(label, detail string, control func())) {
+		row(T("被动额度用量更新", "Passive quota updates"), T("跟随 CPA 已记录的额度数据，不再自动查询上游；手动刷新仍可查询，实例数据刷新间隔继续生效", "Follow quota data recorded by CPA without automatic upstream queries; manual quota refresh and instance polling remain available"), func() {
+			on := cur.PassiveQuota
+			if ui.Switch(c.Key("passive-quota"), &on).Label(T("被动额度用量更新", "Passive quota updates")).Changed() {
+				if save(func(s *store.Settings) { s.PassiveQuota = on }) {
+					a.quotas = nil
+					a.changed()
+				}
+			}
+		})
 		row(T("后台刷新间隔（秒）", "Background interval (s)"), T("不少于 10 秒。最多同时刷新 4 个实例，系统睡眠时暂停。", "At least 10 s. At most 4 instances refresh at once; refresh pauses while the system sleeps."), func() {
 			ui.TextInput(c.Key("bg"), &st.background).Width(90).Label(T("后台刷新间隔（秒）", "Background interval (s)"))
 		})

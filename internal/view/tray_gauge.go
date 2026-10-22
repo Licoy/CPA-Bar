@@ -80,7 +80,18 @@ func (a *App) trayRows(limit int, now time.Time) []trayRow {
 		if e != nil && e.res != nil {
 			short, long = e.res.Summary()
 		}
-		rows = append(rows, newTrayRow(cr, short, long, now))
+		row := newTrayRow(cr, short, long, now)
+		if e != nil && a.Svc.Settings().PassiveQuota {
+			if e.res != nil {
+				row.tip += " · " + e.sourceText()
+			} else {
+				row.tip += " · " + T("等待 CPA 额度数据", "Waiting for CPA quota data")
+				if e.err != nil {
+					row.tip += " · " + quotaErrText(e.err)
+				}
+			}
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }

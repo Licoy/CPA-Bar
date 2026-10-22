@@ -34,6 +34,8 @@ const (
 type quotaInstance struct {
 	// client is the client the cache was read with: a new one (another
 	// address or key) starts afresh.
+	id      string
+	passive bool
 	client  *cpa.Client
 	entries map[string]*quotaEntry
 	running int
@@ -46,13 +48,17 @@ type quotaInstance struct {
 
 // quotaEntry is the quota of one account.
 type quotaEntry struct {
-	fetching bool
-	res      *quota.Result
-	at       time.Time // when res was read
-	err      error     // the last read's failure
-	failedAt time.Time
-	failures int
-	provider quota.Provider
+	fetching      bool
+	res           *quota.Result
+	at            time.Time // when res was read
+	err           error     // the last read's failure
+	failedAt      time.Time
+	failures      int
+	provider      quota.Provider
+	observation   string
+	observedAt    time.Time
+	fromCPA       bool
+	manualPending *cpa.Credential
 
 	acting bool
 	// actMsg says how the last action went; actErr marks a failure,
@@ -71,8 +77,8 @@ func (a *App) quotaCache(id string, cl *cpa.Client) *quotaInstance {
 		a.quotas = map[string]*quotaInstance{}
 	}
 	q := a.quotas[id]
-	if q == nil || q.client != cl {
-		q = &quotaInstance{client: cl, entries: map[string]*quotaEntry{}}
+	if q == nil || q.client != cl || q.passive != a.Svc.Settings().PassiveQuota {
+		q = &quotaInstance{id: id, passive: a.Svc.Settings().PassiveQuota, client: cl, entries: map[string]*quotaEntry{}}
 		a.quotas[id] = q
 	}
 	return q
@@ -107,7 +113,9 @@ func (a *App) quotaEntryFor(s core.InstanceSnapshot, cr cpa.Credential, now time
 		e = &quotaEntry{}
 		q.entries[cr.AuthIndex] = e
 	}
-	if e.due(now) {
+	if q.passive {
+		e.observe(cr)
+	} else if e.due(now) {
 		a.quotaFetch(q, e, cr, false)
 	}
 	return e, q, true
@@ -128,10 +136,14 @@ func (e *quotaEntry) due(now time.Time) bool {
 // quotaFetch reads an account's quota. manual reads skip the bound on
 // parallel reads.
 func (a *App) quotaFetch(q *quotaInstance, e *quotaEntry, cr cpa.Credential, manual bool) {
-	if e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
+	if !a.quotaCurrent(q) || (!manual && q.passive) || e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
 		return
 	}
 	if quota.NeedsPlugins(cr) && !a.quotaPlugins(q, manual) {
+		if manual && q.pluginsBusy {
+			pending := cr
+			e.manualPending = &pending
+		}
 		if q.pluginsErr != nil && !q.pluginsBusy {
 			e.err, e.failedAt = q.pluginsErr, time.Now()
 			e.failures++
@@ -148,17 +160,26 @@ func (a *App) quotaFetch(q *quotaInstance, e *quotaEntry, cr cpa.Credential, man
 	e.fetching = true
 	q.running++
 	cl := q.client
+	observation := e.observation
 	go func() {
 		res, err := p.Fetch(context.Background(), cl, cr)
 		runOnMain(func() {
 			q.running--
 			e.fetching = false
+			if !a.quotaCurrent(q) {
+				return
+			}
+			if e.observation != observation {
+				a.quotaRedraw()
+				return
+			}
 			e.provider = p
 			if err != nil {
 				e.err, e.failedAt = err, time.Now()
 				e.failures++
 			} else {
 				e.res, e.at, e.err, e.failures = res, time.Now(), nil, 0
+				e.fromCPA = false
 			}
 			a.quotaRedraw()
 		})
@@ -168,6 +189,9 @@ func (a *App) quotaFetch(q *quotaInstance, e *quotaEntry, cr cpa.Credential, man
 // quotaPlugins reports that the server's plugin list is known, reading it
 // when it is missing or old.
 func (a *App) quotaPlugins(q *quotaInstance, manual bool) bool {
+	if !a.quotaCurrent(q) || (q.passive && !manual) {
+		return false
+	}
 	now := time.Now()
 	known := !q.pluginsAt.IsZero() && q.pluginsErr == nil
 	switch {
@@ -184,10 +208,23 @@ func (a *App) quotaPlugins(q *quotaInstance, manual bool) bool {
 		list, err := cl.Plugins(context.Background())
 		runOnMain(func() {
 			q.pluginsBusy = false
+			if !a.quotaCurrent(q) {
+				return
+			}
 			q.pluginsAt = time.Now()
 			q.pluginsErr = err
 			if err == nil {
 				q.plugins = list.Plugins
+			}
+			for _, e := range q.entries {
+				if cr := e.manualPending; cr != nil {
+					e.manualPending = nil
+					if err != nil {
+						e.err = err
+					} else {
+						a.quotaFetch(q, e, *cr, true)
+					}
+				}
 			}
 			a.quotaRedraw()
 		})
@@ -208,6 +245,9 @@ func (a *App) quotaAct(q *quotaInstance, e *quotaEntry, cr cpa.Credential, actio
 		done, err := p.Act(context.Background(), cl, cr, action)
 		runOnMain(func() {
 			e.acting = false
+			if !a.quotaCurrent(q) {
+				return
+			}
 			var m *quota.Msg
 			switch {
 			case err == nil:
@@ -350,12 +390,17 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 		switch {
 		case r == nil && e.err != nil:
 			ui.Text(c, fmt.Sprintf(T("读取额度失败：%s", "Could not read the quota: %s"), quotaErrText(e.err))).FontSize(12).TextColor(t.Danger).MaxLines(3).Selectable()
+		case r == nil && q.passive && !e.fetching:
+			ui.Text(c, T("等待 CPA 额度数据", "Waiting for CPA quota data")).FontSize(12).TextColor(t.TextMuted)
 		case r == nil:
 			ui.Text(c, T("正在读取额度…", "Reading the quota…")).FontSize(12).TextColor(t.TextMuted)
 		default:
 			if e.err != nil {
 				ui.Text(c, fmt.Sprintf(T("刷新失败（%s），以下是 %s 读取的额度", "Refresh failed (%s); the quota below was read %s"), quotaErrText(e.err), Ago(e.at, now))).
 					FontSize(11).TextColor(t.Warning).MaxLines(2).Selectable()
+			}
+			if q.passive {
+				ui.Text(c, e.sourceText()).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			}
 			quotaGroups(c, r, now, cols)
 			for i, n := range r.Notes {
