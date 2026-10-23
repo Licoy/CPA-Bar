@@ -339,8 +339,10 @@ func TestUsageEnableStatsNeedsConfirmation(t *testing.T) {
 	}
 	a.Usage.Sync([]usage.Target{{ID: id, Client: cl}})
 	tt := ui.NewTester(a.managerView, managerWidth, managerHeight)
-	pump(t, tt, q, 5*time.Second, "the warning", func() bool {
-		return tt.HasText("CPA 未开启 usage-statistics-enabled")
+	// The fake has no usage stream; wait for its final status before clicking,
+	// as that status adds rows above the button and changes its position.
+	pump(t, tt, q, 5*time.Second, "the warning and stream status", func() bool {
+		return tt.HasText("CPA 未开启 usage-statistics-enabled") && tt.HasText("此地址不支持用量流")
 	})
 
 	put := func() int {

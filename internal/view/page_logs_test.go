@@ -162,6 +162,7 @@ func pump(t *testing.T, tt *ui.Tester, q *pageQueue, timeout time.Duration, what
 	deadline := time.Now().Add(timeout)
 	for {
 		q.drain()
+		tt.Advance(time.Since(tt.Now()))
 		tt.Frame()
 		if cond() {
 			return
@@ -178,6 +179,7 @@ func settle(tt *ui.Tester, q *pageQueue, d time.Duration) {
 	end := time.Now().Add(d)
 	for time.Now().Before(end) {
 		q.drain()
+		tt.Advance(time.Since(tt.Now()))
 		tt.Frame()
 		time.Sleep(20 * time.Millisecond)
 	}

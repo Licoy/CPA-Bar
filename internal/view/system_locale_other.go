@@ -2,6 +2,18 @@
 
 package view
 
-import "github.com/egoist/mygo"
+import (
+	"errors"
 
-func preferredSystemLocale() (string, error) { return mygo.App.Locale(), nil }
+	"github.com/egoist/mygo"
+)
+
+var preferredLanguages = mygo.App.PreferredLanguages
+
+func preferredSystemLocale() (string, error) {
+	languages := preferredLanguages()
+	if len(languages) == 0 {
+		return "", errors.New("read system preferred languages: no languages returned")
+	}
+	return languages[0], nil
+}

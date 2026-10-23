@@ -167,6 +167,7 @@ func waitFor(t *testing.T, tt *ui.Tester, q *uiQueue, what string, cond func() b
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		q.drain()
+		tt.Advance(time.Since(tt.Now()))
 		tt.Frame()
 		if cond() {
 			return

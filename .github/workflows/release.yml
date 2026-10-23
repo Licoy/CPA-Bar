@@ -25,7 +25,7 @@ concurrency:
 env:
   # The mygo CLI that builds, signs and uploads. go.mod does not pin it as a
   # `tool`, so CI runs it by version; keep this equal to the mygo version in go.mod.
-  MYGO_CLI: github.com/egoist/mygo/cmd/mygo@v0.4.1
+  MYGO_CLI: github.com/egoist/mygo/cmd/mygo@v0.6.2
 
 jobs:
   test:
