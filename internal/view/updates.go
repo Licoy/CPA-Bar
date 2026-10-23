@@ -11,7 +11,7 @@ import (
 )
 
 // UpdateInterval is the time between background update checks.
-const UpdateInterval = 12 * time.Hour
+const UpdateInterval = time.Hour
 
 // UseUpdater installs the native update window: it checks GitHub
 // releases in the background, shows the notes, and offers to install, to

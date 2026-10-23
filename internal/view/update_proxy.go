@@ -26,14 +26,31 @@ func configureUpdaterHTTP() error {
 		transport = http.DefaultTransport.(*http.Transport)
 	case *http.Transport:
 		transport = current
+	case *updaterTransport:
+		transport = current.Transport
 	default:
 		return fmt.Errorf("unsupported default HTTP transport %T", current)
 	}
 	transport = transport.Clone()
 	transport.Proxy = updaterProxyForRequest
-	client.Transport = transport
+	client.Transport = &updaterTransport{Transport: transport, userAgent: "cpa-bar/" + Version}
 	http.DefaultClient = &client
 	return nil
+}
+
+// updaterTransport replaces the framework updater's UA without modifying
+// requests from other users of http.DefaultClient.
+type updaterTransport struct {
+	*http.Transport
+	userAgent string
+}
+
+func (t *updaterTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.HasPrefix(req.UserAgent(), "MyGo/") {
+		req = req.Clone(req.Context())
+		req.Header.Set("User-Agent", t.userAgent)
+	}
+	return t.Transport.RoundTrip(req)
 }
 
 func updaterProxyForRequest(req *http.Request) (*url.URL, error) {
