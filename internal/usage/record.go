@@ -86,6 +86,19 @@ func (r Record) DisplayModel() string {
 	return "unknown"
 }
 
+// ClientKey resolves the recorded fingerprint against the instance's current
+// client keys, without storing a full key in the usage records.
+func (r Record) ClientKey(keys []string) string {
+	if r.KeyID != "" {
+		for _, key := range keys {
+			if id, _ := keyFingerprint(key); id == r.KeyID {
+				return strings.TrimSpace(key)
+			}
+		}
+	}
+	return ""
+}
+
 // maxErrorLen bounds the failure body kept with a record.
 const maxErrorLen = 300
 

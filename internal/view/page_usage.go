@@ -214,7 +214,12 @@ func usagePage(c *ui.Context, env *PageEnv) {
 			return g.Key
 		})
 	})
-	usageTable(c, st)
+	keys := State(env, "keys", newKeysState)
+	if !keys.started {
+		keys.reload(env)
+	}
+	ErrorBanner(c, keys.load.Err)
+	st.table(c, keys.keys, w-sidebarWidth-48)
 }
 
 // usageCollector shows where the instance's stream is, and warns when the
@@ -662,8 +667,9 @@ func usageGroupPanel(c *ui.Context, key string, icon *ui.SVG, k Tint, title stri
 var usageCols = [...]struct{ w, grow float32 }{
 	{w: 60},   // time
 	{grow: 3}, // model
-	{w: 88},   // provider
+	{w: 108},  // provider
 	{grow: 2}, // account
+	{w: 80},   // client key
 	{w: 62},   // result
 	{w: 92},   // tokens
 	{w: 52},   // cache
@@ -677,11 +683,14 @@ func usageCell(c *ui.Context, i int, fn func()) {
 	} else {
 		col.Grow(usageCols[i].grow).Basis(0)
 	}
+	if i == 1 {
+		col.MaxWidth(160)
+	}
 	col.Children(fn)
 }
 
-// usageTable lists the requests newest first, a page at a time.
-func usageTable(c *ui.Context, st *usageState) {
+// table lists the requests newest first, filling the available page width.
+func (st *usageState) table(c *ui.Context, keys []string, width float32) {
 	t := c.Theme()
 	rows := st.rows
 	from := st.page*usagePageSize + 1
@@ -692,39 +701,48 @@ func usageTable(c *ui.Context, st *usageState) {
 			ui.Text(c, T("暂无记录。", "No records.")).FontSize(13).TextColor(t.TextMuted)
 			return
 		}
-		heads := []string{T("时间", "Time"), T("模型", "Model"), T("服务商", "Provider"), T("账号", "Account"), T("结果", "Result"), "Token", T("缓存", "Cache"), T("耗时", "Time taken")}
-		ui.Row(c).Gap(8).Padding(0, 4).Children(func() {
-			for i, h := range heads {
-				usageCell(c, i, func() { ui.Text(c, h).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine() })
-			}
-		})
-		ui.Column(c).Children(func() {
-			prevDay := ""
-			today := c.Now().Local().Format("01-02")
-			for i, r := range rows {
-				day := r.Time.Local().Format("01-02")
-				showDay := day != prevDay && (i > 0 || day != today)
-				prevDay = day
-				ui.Box(c.Key(fmt.Sprint("rule", i))).Height(1).Background(pal(t).Line)
-				ui.Column(c.Key(fmt.Sprint("req", i))).Gap(2).Padding(7, 4).Children(func() {
-					usageRow(c, r, day, showDay)
-					if r.Failed && !r.Canceled || r.Canceled && r.Error != "" {
-						line := ""
-						if r.Status > 0 {
-							line = fmt.Sprintf("HTTP %d", r.Status)
-						}
-						if e := PrivText(r.Error); e != "" {
-							if line != "" {
-								line += " · "
-							}
-							line += e
-						}
-						if line != "" {
-							ui.Text(c, line).FontSize(11).TextColor(t.Danger).SingleLine().Selectable()
-						}
+		ui.ScrollHorizontal(c).Children(func() {
+			// A horizontal scroller measures children with unbounded width,
+			// so use its viewport width explicitly, excluding Panel's padding.
+			ui.Column(c).Width(max(744, width-36)).Shrink(0).Gap(14).Children(func() {
+				heads := []string{T("时间", "Time"), T("模型", "Model"), T("服务商", "Provider"), T("账号", "Account"), "Key", T("结果", "Result"), "Token", T("缓存", "Cache"), T("耗时", "Time taken")}
+				ui.Row(c).Gap(8).Padding(0, 4).Children(func() {
+					for i, h := range heads {
+						usageCell(c, i, func() { ui.Text(c, h).FontSize(11).FontWeight(600).TextColor(t.TextMuted).SingleLine() })
 					}
 				})
-			}
+				ui.Column(c).Children(func() {
+					prevDay := ""
+					today := c.Now().Local().Format("01-02")
+					for i, r := range rows {
+						day := r.Time.Local().Format("01-02")
+						showDay := day != prevDay && (i > 0 || day != today)
+						prevDay = day
+						if !showDay {
+							day = ""
+						}
+						ui.Box(c.Key(fmt.Sprint("rule", i))).Height(1).Background(pal(t).Line)
+						ui.Column(c.Key(fmt.Sprint("req", i))).Gap(2).Padding(7, 4).Children(func() {
+							usageRow(c, r, day, r.ClientKey(keys))
+							if r.Failed && !r.Canceled || r.Canceled && r.Error != "" {
+								line := ""
+								if r.Status > 0 {
+									line = fmt.Sprintf("HTTP %d", r.Status)
+								}
+								if e := PrivText(r.Error); e != "" {
+									if line != "" {
+										line += " · "
+									}
+									line += e
+								}
+								if line != "" {
+									ui.Text(c, line).FontSize(11).TextColor(t.Danger).SingleLine().Selectable()
+								}
+							}
+						})
+					}
+				})
+			})
 		})
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf(T("第 %d–%d 条，共 %d 条", "%d–%d of %d"), from, to, st.total)).FontSize(12).TextColor(t.TextMuted).FontFeatures("tnum").Grow(1)
@@ -738,12 +756,12 @@ func usageTable(c *ui.Context, st *usageState) {
 	})
 }
 
-func usageRow(c *ui.Context, r usage.Record, day string, showDay bool) {
+func usageRow(c *ui.Context, r usage.Record, day, key string) {
 	t := c.Theme()
 	ui.Row(c).Gap(8).Children(func() {
 		usageCell(c, 0, func() {
 			ui.Text(c, r.Time.Local().Format("15:04:05")).FontSize(12).FontFeatures("tnum").SingleLine()
-			if showDay {
+			if day != "" {
 				ui.Text(c, day).FontSize(11).TextColor(t.TextMuted).FontFeatures("tnum").SingleLine()
 			}
 		})
@@ -769,27 +787,48 @@ func usageRow(c *ui.Context, r usage.Record, day string, showDay bool) {
 			ui.Text(c, PrivName(r.Source)).FontSize(12).SingleLine()
 		})
 		usageCell(c, 4, func() {
-			switch {
-			case r.Canceled:
-				Pill(c, T("已取消", "Canceled"), t.TextMuted)
-			case r.Failed:
-				Pill(c, T("失败", "Failed"), t.Danger)
-			default:
-				Pill(c, T("成功", "OK"), t.Success)
+			label, tip := r.KeyMask, T("完整 Key 不可用，密钥可能已删除", "Full key unavailable; it may have been deleted")
+			if key != "" {
+				label, tip = maskMiddle(key), key
+			} else if label == "" {
+				label = "—"
+				if r.KeyID == "" {
+					tip = T("此请求未记录 Key", "No key was recorded for this request")
+				}
+			}
+			anchor := ui.Text(c, label).FontSize(12).SingleLine().Description(tip)
+			if anchor.Hovered() {
+				ui.Overlay(c, func() {
+					ui.Box(c).Absolute().PassThrough().Role(ui.RoleTooltip).
+						MaxWidth(320).Padding(5, 8).Radius(5).Background(t.Inverse).TextColor(t.InverseText).
+						Shadow(0, 2, 8, 0, ui.RGBA(0, 0, 0, 0.2)).
+						AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Margin(0, 0, 6, 0).
+						Children(func() { ui.Text(c, tip).FontSize(12) })
+				})
 			}
 		})
 		usageCell(c, 5, func() {
+			switch {
+			case r.Canceled:
+				Pill(c, T("已取消", "Canceled"), t.TextMuted).AlignSelf(ui.Start)
+			case r.Failed:
+				Pill(c, T("失败", "Failed"), t.Danger).AlignSelf(ui.Start)
+			default:
+				Pill(c, T("成功", "OK"), t.Success).AlignSelf(ui.Start)
+			}
+		})
+		usageCell(c, 6, func() {
 			ui.Text(c, usageNum(r.Tokens.Total)).FontSize(12).FontWeight(500).FontFeatures("tnum").SingleLine()
 			ui.Text(c, "↑"+compactNum(r.Tokens.Input)+" ↓"+compactNum(r.Tokens.Output)).FontSize(11).TextColor(t.TextMuted).FontFeatures("tnum").SingleLine()
 		})
-		usageCell(c, 6, func() {
+		usageCell(c, 7, func() {
 			v := "—"
 			if r.Tokens.CacheRead > 0 {
 				v = compactNum(r.Tokens.CacheRead)
 			}
 			ui.Text(c, v).FontSize(12).FontFeatures("tnum").SingleLine()
 		})
-		usageCell(c, 7, func() {
+		usageCell(c, 8, func() {
 			ui.Text(c, pick(r.LatencyMs > 0, usageDur(r.LatencyMs), "—")).FontSize(12).FontFeatures("tnum").SingleLine()
 			if r.TTFTMs > 0 {
 				ui.Text(c, T("首字 ", "TTFT ")+usageDur(r.TTFTMs)).FontSize(11).TextColor(t.TextMuted).FontFeatures("tnum").SingleLine()
