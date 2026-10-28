@@ -67,3 +67,24 @@ func TestPanelPopoverAppearanceFollowsApp(t *testing.T) {
 		}
 	}
 }
+
+func TestPanelDismissalOnDeactivateAndCleanup(t *testing.T) {
+	closed := 0
+	a := &App{}
+	a.panelPopover.stopDismissal = observePanelDismissal(nil, func() { closed++ })
+	t.Cleanup(func() { releasePanelPopover(a) })
+	center := objc.ID(objc.GetClass("NSNotificationCenter")).Send(objc.RegisterName("defaultCenter"))
+	app := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
+	post := func() {
+		center.Send(objc.RegisterName("postNotificationName:object:"), nsStr("NSApplicationDidResignActiveNotification"), app)
+	}
+	post()
+	if closed != 1 {
+		t.Errorf("app deactivation requested %d closes, want 1", closed)
+	}
+	releasePanelPopover(a)
+	post()
+	if closed != 1 {
+		t.Errorf("removed observer requested another close: %d", closed)
+	}
+}
