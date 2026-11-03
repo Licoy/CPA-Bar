@@ -8,7 +8,6 @@ import (
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
-	"github.com/egoist/mygo"
 )
 
 type panelPopoverState struct {
@@ -51,7 +50,7 @@ func observePanelPopover(a *App, opaque bool) func() {
 		a.panelPopover.popover = popover
 		controller := popover.Send(objc.RegisterName("contentViewController"))
 		a.panelPopover.view = controller.Send(objc.RegisterName("view"))
-		a.panelPopover.stopDismissal = observePanelDismissal(a.tray, a.ClosePanel)
+		a.panelPopover.stopDismissal = observePanelDismissal(a.dismissPanel)
 	})
 	token := center.Send(objc.RegisterName("addObserverForName:object:queue:usingBlock:"), popoverWillShowNotification, objc.ID(0), objc.ID(0), block)
 	return func() {
@@ -62,27 +61,18 @@ func observePanelPopover(a *App, opaque bool) func() {
 
 // AppKit's transient popovers do not dismiss for every outside interaction,
 // including some menu-bar panels. Own these events for the panel's lifetime.
-func observePanelDismissal(tray *mygo.Tray, closePanel func()) func() {
+func observePanelDismissal(closePanel func()) func() {
 	events := objc.ID(objc.GetClass("NSEvent"))
-	dismiss := func() {
-		// The tray's click toggles the panel itself; closing on mouse-down
-		// here would let its mouse-up open a new panel immediately. Do not
-		// check pressedMouseButtons: a quick click may already be released
-		// when AppKit delivers these events.
-		if tray != nil {
-			p, b := mygo.Screen.CursorScreenPoint(), tray.Bounds()
-			if p.X >= b.X && p.Y >= b.Y && p.X < b.X+b.Width && p.Y < b.Y+b.Height {
-				return
-			}
-		}
-		closePanel()
-	}
-	click := objc.NewBlock(func(_ objc.Block, _ objc.ID) { dismiss() })
+	// A press on the tray icon closes the panel here too: the menu bar is
+	// another process's on recent macOS, so the press may come as another
+	// app's event, or not reach the icon at all while the popover shows.
+	// TogglePanel ignores the click its release makes.
+	click := objc.NewBlock(func(_ objc.Block, _ objc.ID) { closePanel() })
 	const mouseDownMask = 1<<1 | 1<<3 | 1<<25 // left, right and other buttons
 	monitor := events.Send(objc.RegisterName("addGlobalMonitorForEventsMatchingMask:handler:"), uint64(mouseDownMask), click)
 	center := objc.ID(objc.GetClass("NSNotificationCenter")).Send(objc.RegisterName("defaultCenter"))
 	app := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
-	deactivate := objc.NewBlock(func(_ objc.Block, _ objc.ID) { dismiss() })
+	deactivate := objc.NewBlock(func(_ objc.Block, _ objc.ID) { closePanel() })
 	token := center.Send(objc.RegisterName("addObserverForName:object:queue:usingBlock:"),
 		nsStr("NSApplicationDidResignActiveNotification"), app, objc.ID(0), deactivate)
 	return func() {

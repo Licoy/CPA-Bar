@@ -71,7 +71,7 @@ func TestPanelPopoverAppearanceFollowsApp(t *testing.T) {
 func TestPanelDismissalOnDeactivateAndCleanup(t *testing.T) {
 	closed := 0
 	a := &App{}
-	a.panelPopover.stopDismissal = observePanelDismissal(nil, func() { closed++ })
+	a.panelPopover.stopDismissal = observePanelDismissal(func() { closed++ })
 	t.Cleanup(func() { releasePanelPopover(a) })
 	center := objc.ID(objc.GetClass("NSNotificationCenter")).Send(objc.RegisterName("defaultCenter"))
 	app := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))

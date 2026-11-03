@@ -1,6 +1,9 @@
 package view
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestClampPanelHeight(t *testing.T) {
 	for _, tc := range []struct{ h, limit, want int }{
@@ -21,5 +24,25 @@ func TestClampPanelHeight(t *testing.T) {
 	}
 	if got := panelHeightLimit(0); got != 0 {
 		t.Errorf("limit of unknown screen = %d", got)
+	}
+}
+
+func TestTogglePanelIgnoresClickThatClosedIt(t *testing.T) {
+	// The press of this click closed the panel: its release does not
+	// open it again (a nil Svc would panic in OpenPanel).
+	a := &App{panelClosedAt: time.Now()}
+	a.TogglePanel()
+	if a.panel != nil || !a.panelClosedAt.IsZero() {
+		t.Fatalf("panel = %v, closedAt = %v; want the click ignored once", a.panel, a.panelClosedAt)
+	}
+}
+
+func TestClosePanelDoesNotHoldBackNextClick(t *testing.T) {
+	// Closing the panel from the app, as the manager or the tray's menu
+	// do, is no press on the icon whose release is to be ignored.
+	a := &App{panelClosedAt: time.Now()}
+	a.ClosePanel()
+	if !a.panelClosedAt.IsZero() {
+		t.Fatalf("closedAt = %v after ClosePanel, want zero", a.panelClosedAt)
 	}
 }

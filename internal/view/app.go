@@ -49,6 +49,10 @@ type App struct {
 	panelPopover  panelPopoverState
 	panelSafeArea panelInsets
 	panelResize   panelResize
+	// panelOpenedAt is when the panel last opened, panelClosedAt when the
+	// user last closed it by a press outside it; see panelClickSlop.
+	panelOpenedAt time.Time
+	panelClosedAt time.Time
 	// quotas caches the quota of the accounts, per instance.
 	quotas           map[string]*quotaInstance
 	quotaWake        *time.Timer
@@ -339,10 +343,22 @@ func (a *App) updateTray() {
 
 // ---- Panel ----
 
+// panelClickSlop is how long a click on the tray icon may take to reach
+// the app in full. After the panel closed by a press outside it, a click
+// on the icon is the one whose press closed it, and its release would
+// open the panel again. After the panel opened, a press outside it or the
+// app's deactivation is still the click that opened it, heard late from
+// the menu bar's process, and would close the panel at once.
+const panelClickSlop = 500 * time.Millisecond
+
 // TogglePanel opens the panel, or closes it when open.
 func (a *App) TogglePanel() {
 	if a.panel != nil {
 		a.ClosePanel()
+		return
+	}
+	if time.Since(a.panelClosedAt) < panelClickSlop {
+		a.panelClosedAt = time.Time{}
 		return
 	}
 	a.OpenPanel()
@@ -355,6 +371,7 @@ func (a *App) OpenPanel() {
 		return
 	}
 	a.panelLists = nil
+	a.panelOpenedAt = time.Now()
 	stopObserving := observePanelPopover(a, a.Svc.Settings().PanelOpaque && panelOpacitySupported())
 	opts := mygo.FlyoutOptions{
 		Tray:      a.tray,
@@ -379,6 +396,7 @@ func (a *App) OpenPanel() {
 	a.panel.OnClosed(func() {
 		releasePanelPopover(a)
 		a.panel = nil
+		a.panelClosedAt = time.Now()
 		a.syncActive()
 	})
 	a.syncActive()
@@ -389,6 +407,17 @@ func (a *App) ClosePanel() {
 	if a.panel != nil {
 		a.panel.Close()
 	}
+	// Only the user's presses outside the panel hold back the next click.
+	a.panelClosedAt = time.Time{}
+}
+
+// dismissPanel closes the panel as the user pressed outside it, unless
+// the click that opened it is not over yet.
+func (a *App) dismissPanel() {
+	if a.panel == nil || time.Since(a.panelOpenedAt) < panelClickSlop {
+		return
+	}
+	a.panel.Close()
 }
 
 // ---- Management window ----
