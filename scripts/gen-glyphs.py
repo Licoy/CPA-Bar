@@ -113,6 +113,17 @@ LOBE = [
     "openai",
     "qwen-color",
     "vertexai-color",
+    # The menu bar draws logos as a template, in one color: the monochrome
+    # versions of the colored ones.
+    "antigravity",
+    "claude",
+    "codex",
+    "devin",
+    "gemini",
+    "geminicli",
+    "meta",
+    "qwen",
+    "vertexai",
 ]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -98,25 +98,38 @@ var providerLogos = map[string]*ui.SVG{}
 
 func init() {
 	for _, name := range providerLogoFiles {
-		if providerLogos[name] != nil {
-			continue
+		// The monochrome version too, for the menu bar.
+		for _, name := range []string{name, strings.TrimSuffix(name, "-color")} {
+			if providerLogos[name] != nil {
+				continue
+			}
+			data, err := providerSVGs.ReadFile("assets/providers/" + name + ".svg")
+			if err != nil {
+				panic(err)
+			}
+			providerLogos[name] = ui.MustParseSVG(data)
 		}
-		data, err := providerSVGs.ReadFile("assets/providers/" + name + ".svg")
-		if err != nil {
-			panic(err)
-		}
-		providerLogos[name] = ui.MustParseSVG(data)
 	}
 }
 
 // providerLogo is the logo of a provider id, or nil for one LobeHub has
 // none of (iFlow, a plugin's).
 func providerLogo(id string) *ui.SVG {
+	return providerLogos[providerLogoFile(id)]
+}
+
+// providerMonoLogo is the monochrome version of a provider's logo, which
+// keeps its shape in one color: the menu bar tints it.
+func providerMonoLogo(id string) *ui.SVG {
+	return providerLogos[strings.TrimSuffix(providerLogoFile(id), "-color")]
+}
+
+func providerLogoFile(id string) string {
 	k := providerKey(id)
 	if strings.HasPrefix(k, "openai-compatible-") {
 		k = "openai-compatibility"
 	}
-	return providerLogos[providerLogoFiles[k]]
+	return providerLogoFiles[k]
 }
 
 // ProviderIcon is a provider's logo, size points square: in its colors, or

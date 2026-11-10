@@ -31,6 +31,7 @@
 
 - 服务商（Claude、Codex、Gemini、OpenAI 等）的标志都必须来自 [LobeHub Icons](https://icons.lobehub.com/)（MIT），由同一个脚本从 npm 包 `@lobehub/icons-static-svg` 复制到 `internal/view/assets/providers/`。
 - 有彩色版（`<name>-color`）的用彩色版，没有的用单色版；单色版以 `currentColor` 绘制，跟随文字颜色。
+- 菜单栏以模板图像单色绘制服务商标志，用 `providerMonoLogo`；有彩色版的服务商同时在脚本的 `LOBE` 表里保留其单色版（去掉 `-color` 的文件名）。
 - 新增服务商：在脚本的 `LOBE` 表里加上文件名并运行脚本，再在 `internal/view/providers.go` 的 `providerLogoFiles` 里把服务商 ID 映射到该文件。LobeHub 没有的服务商显示 Remix 的 `plug-line` 作为占位，不要自行绘制标志。
 - 凡是显示服务商或账号的地方都用 `ProviderIcon` / `providerTile` / `credTile` 显示服务商标志。
 

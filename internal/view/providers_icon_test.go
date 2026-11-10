@@ -8,14 +8,15 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Every provider CPA names has a LobeHub logo, but iFlow, which LobeHub has
-// none of; every embedded logo is used.
+// Every provider CPA names has a LobeHub logo, and a monochrome one for
+// the menu bar, but iFlow, which LobeHub has none of; every embedded logo
+// is used.
 func TestProviderLogos(t *testing.T) {
 	for id := range providerNames {
 		if id == "iflow" {
 			continue
 		}
-		if providerLogo(id) == nil {
+		if providerLogo(id) == nil || providerMonoLogo(id) == nil {
 			t.Errorf("provider %q has no logo", id)
 		}
 	}
@@ -29,7 +30,7 @@ func TestProviderLogos(t *testing.T) {
 	}
 	used := map[string]bool{}
 	for _, f := range providerLogoFiles {
-		used[f] = true
+		used[f], used[strings.TrimSuffix(f, "-color")] = true, true
 	}
 	files, _ := fs.Glob(providerSVGs, "assets/providers/*.svg")
 	for _, f := range files {
