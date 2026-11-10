@@ -106,7 +106,7 @@ func TestPassiveQuotaFollowsCredentialsWithoutQueries(t *testing.T) {
 	if e.at.IsZero() || !e.fromCPA || time.Since(e.at) < 30*time.Minute {
 		t.Fatalf("CPA observation time lost: %+v", e)
 	}
-	a.trayRows(2, time.Now().Add(24*time.Hour))
+	a.trayQuota(2, time.Now().Add(24*time.Hour))
 	panel := ui.NewTester(a.panelView, panelWidth, panelHeight)
 	panel.Frame()
 	q.drain()

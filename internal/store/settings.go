@@ -114,8 +114,26 @@ type Settings struct {
 	// TrayText shows "3/4" next to the icon where the platform can.
 	TrayText bool `json:"trayText"`
 	// TrayStyle is what the menu bar shows: the icon (and TrayText), or
-	// the quota of some accounts as bars.
+	// the quota of some accounts in one of the quota styles.
 	TrayStyle string `json:"trayStyle,omitempty"`
+	// TrayWindow is which limits the quota styles show: TrayWindowAuto,
+	// TrayWindowShort or TrayWindowLong.
+	TrayWindow string `json:"trayWindow,omitempty"`
+	// TrayMetersDetail is the text after a bar of the meters style:
+	// TrayDetailPercent, TrayDetailReset or TrayDetailBoth.
+	TrayMetersDetail string `json:"trayMetersDetail,omitempty"`
+	// TrayBatteryDetail is the text after a battery: TrayBatteryCountdown
+	// or TrayBatteryPercent.
+	TrayBatteryDetail string `json:"trayBatteryDetail,omitempty"`
+	// TrayBatteryVertical stands the batteries up.
+	TrayBatteryVertical bool `json:"trayBatteryVertical,omitempty"`
+	// TrayRingValues puts each limit's value inside a ring of its own.
+	TrayRingValues bool `json:"trayRingValues,omitempty"`
+	// TrayHideIcons leaves the providers' logos out of the quota styles.
+	TrayHideIcons bool `json:"trayHideIcons,omitempty"`
+	// TrayStack stacks the first two accounts in one component, where the
+	// style can (TrayStyleStacks).
+	TrayStack bool `json:"trayStack,omitempty"`
 	// TrayIconColor shows the tray icon in the logo's colors. By default
 	// it is in one color, which follows the menu bar or taskbar.
 	TrayIconColor bool `json:"trayIconColor,omitempty"`
@@ -132,11 +150,49 @@ type Settings struct {
 const (
 	// TrayStyleIcon is the logo, with the text of TrayText.
 	TrayStyleIcon = ""
-	// TrayStyleBars shows the quota of up to two accounts as bars, each
-	// with a line of text.
-	TrayStyleBars = "bars"
-	// trayStyleBattery was a style of upright batteries; it shows as bars.
-	trayStyleBattery = "battery"
+	// The quota styles show the quota of some accounts: as bars, as the
+	// time left until the refill, as batteries, as rings, or as text.
+	TrayStyleMeters    = "meters"
+	TrayStyleCountdown = "countdown"
+	TrayStyleBattery   = "battery"
+	TrayStyleRings     = "rings"
+	TrayStyleText      = "text"
+	// trayStyleBars was the meters style's name.
+	trayStyleBars = "bars"
+)
+
+// TrayStyles are the menu bar styles, the icon first.
+var TrayStyles = []string{TrayStyleIcon, TrayStyleMeters, TrayStyleCountdown, TrayStyleBattery, TrayStyleRings, TrayStyleText}
+
+// TrayStyleStacks reports whether a style can stack two accounts in one
+// component; rings and text show every account on its own.
+func TrayStyleStacks(style string) bool {
+	return style == TrayStyleMeters || style == TrayStyleCountdown || style == TrayStyleBattery
+}
+
+// The limits the quota styles show.
+const (
+	// TrayWindowAuto shows both main limits of an account that has a
+	// component to itself, and the short one of one that shares it.
+	TrayWindowAuto = ""
+	// TrayWindowShort and TrayWindowLong show that limit of every
+	// account, or its other one where it has none.
+	TrayWindowShort = "short"
+	TrayWindowLong  = "long"
+)
+
+// The texts after a bar: the percentage left, the refill time, or both.
+const (
+	TrayDetailPercent = ""
+	TrayDetailReset   = "reset"
+	TrayDetailBoth    = "both"
+)
+
+// The texts after a battery: the time left until the refill, or the
+// percentage left.
+const (
+	TrayBatteryCountdown = ""
+	TrayBatteryPercent   = "percent"
 )
 
 // MaxQuotaRefreshMinutes is the largest minute interval time.Duration can hold.
@@ -187,12 +243,20 @@ func (s *Settings) Normalize() {
 	for i := range s.Instances {
 		s.Instances[i].Order = i
 	}
-	switch s.TrayStyle {
-	case TrayStyleBars:
-	case trayStyleBattery:
-		s.TrayStyle = TrayStyleBars
-	default:
+	switch {
+	case s.TrayStyle == trayStyleBars:
+		s.TrayStyle = TrayStyleMeters
+	case !slices.Contains(TrayStyles, s.TrayStyle):
 		s.TrayStyle = TrayStyleIcon
+	}
+	if s.TrayWindow != TrayWindowShort && s.TrayWindow != TrayWindowLong {
+		s.TrayWindow = TrayWindowAuto
+	}
+	if s.TrayMetersDetail != TrayDetailReset && s.TrayMetersDetail != TrayDetailBoth {
+		s.TrayMetersDetail = TrayDetailPercent
+	}
+	if s.TrayBatteryDetail != TrayBatteryPercent {
+		s.TrayBatteryDetail = TrayBatteryCountdown
 	}
 	if s.DefaultInstanceID != "" && s.Instance(s.DefaultInstanceID) == nil {
 		s.DefaultInstanceID = ""

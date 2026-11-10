@@ -41,9 +41,6 @@ type trayLook struct {
 	// menu bar tints; elsewhere white on a dark taskbar or panel, else
 	// black.
 	mono, light bool
-	// n, when not 0, draws the first n gauges as bars instead of the logo.
-	n      int
-	gauges [trayMaxBars]trayGauge
 }
 
 // trayIcon draws the tray icon: the logo, 18 points tall on macOS and
@@ -51,9 +48,6 @@ type trayLook struct {
 // at the corner, red in color and in the logo's color when mono, with a
 // gap around it so that it shows over the logo.
 func trayIcon(l trayLook) (data []byte, template bool) {
-	if l.n > 0 {
-		return barsIcon(l.gauges[:l.n]), false
-	}
 	src := trayColor32
 	switch {
 	case runtime.GOOS == "darwin" && l.mono:

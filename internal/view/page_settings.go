@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/licoy/cpa-bar/internal/cpa"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -134,30 +133,11 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 				a.changed()
 			}
 		})
-		if mygoTrayTitleSupported() {
-			row(T("菜单栏样式", "Menu bar style"), trayStyleDetail(cur.TrayStyle), func() {
-				styles := []string{store.TrayStyleIcon, store.TrayStyleBars}
-				i := max(0, indexOf(styles, cur.TrayStyle))
-				if PillTabs(c.Key("traystyle"), &i, T("图标", "Icon"), T("进度条", "Bars")) {
-					style := styles[i]
-					save(func(s *store.Settings) { s.TrayStyle = style })
-					a.changed()
-				}
-			})
-			switch cur.TrayStyle {
-			case store.TrayStyleIcon:
-				row(T("显示在线实例数", "Show instances online"), T("在图标旁显示“3/4”（在线实例/实例总数）", "Show “3/4” (online/all instances) next to the icon"), func() {
-					on := cur.TrayText
-					if ui.Switch(c.Key("traytext"), &on).Label(T("显示在线实例数", "Show instances online")).Changed() {
-						save(func(s *store.Settings) { s.TrayText = on })
-						a.changed()
-					}
-				})
-			case store.TrayStyleBars:
-				trayAccountsRow(c, a, row)
-			}
-		}
 	})
+
+	if mygoTrayTitleSupported() {
+		trayStyleSettings(c, a, cur, save)
+	}
 
 	settingsGroup(c, icRefresh, TintGreen, T("刷新", "Refresh"), func(row func(label, detail string, control func())) {
 		row(T("被动额度用量更新", "Passive quota updates"), T("跟随 CPA 已记录的额度数据，不再自动查询上游；手动刷新仍可查询，实例数据刷新间隔继续生效", "Follow quota data recorded by CPA without automatic upstream queries; manual quota refresh and instance polling remain available"), func() {
@@ -303,56 +283,11 @@ func trayIconName() string {
 	return T("托盘图标", "Tray icon")
 }
 
-// trayStyleDetail says what a menu bar style shows.
-func trayStyleDetail(style string) string {
-	if style == store.TrayStyleBars {
-		return T("以进度条显示最多 2 个账号的剩余额度（有 5 小时限额时显示 5 小时限额，没有则显示周限额或其他限额），旁边标出服务商、限额、剩余比例和刷新时间。账号取自默认实例（未设置时为第一个实例），置顶的账号优先，其余按账号列表顺序，跳过已停用和不支持额度的账号；悬停可查看各账号的额度。",
-			"Shows the quota left of up to 2 accounts as bars (the 5-hour limit, else the weekly or another one), each with its provider, limit, percent left and refill time. Accounts are from the default instance (else the first), pinned ones first, then in the order of the account list, skipping disabled ones and those without a quota; hover for each account's quota.")
-	}
-	return T("显示 CPA-Bar 图标，可在旁边显示在线实例数。", "Shows the CPA-Bar icon, optionally with the number of instances online.")
-}
-
-// trayAccountsRow says which instance and accounts the bars show.
-func trayAccountsRow(c *ui.Context, a *App, row func(label, detail string, control func())) {
-	s, ok := a.trayInstance()
-	detail := ""
-	var creds []cpa.Credential
-	switch {
-	case !ok:
-		detail = T("还没有实例。", "No instances yet.")
-	case s.Profile.Paused:
-		detail = fmt.Sprintf(T("实例“%s”已暂停，菜单栏显示图标。", "Instance “%s” is paused; the menu bar shows the icon."), s.Profile.Name)
-	default:
-		creds = trayAccounts(s, trayMaxBars)
-		detail = fmt.Sprintf(T("实例：%s", "Instance: %s"), s.Profile.Name)
-		if len(creds) == 0 {
-			detail += T("。没有可显示额度的账号，菜单栏显示图标。", ". No account has a quota to show; the menu bar shows the icon.")
-		}
-	}
-	row(T("显示的账号", "Accounts shown"), detail, func() {
-		if len(creds) == 0 {
-			return
-		}
-		t := c.Theme()
-		ui.Column(c).Gap(6).Children(func() {
-			for _, cr := range creds {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					credTile(c.Key("tray-"+credKeyOf(cr)), cr, 22, pal(t).Card)
-					ui.Text(c, PrivName(cr.DisplayName())).FontSize(12).SingleLine()
-					if s.Profile.Pinned(credFileName(cr)) {
-						ui.Icon(c, icPinned).FontSize(11).TextColor(t.Accent).Label(T("已置顶", "Pinned")).Tooltip(T("已置顶", "Pinned"))
-					}
-				})
-			}
-		})
-	})
-}
-
 // trayIconDetail says how the mono icon looks on the platform.
 func trayIconDetail() string {
 	switch runtime.GOOS {
 	case "darwin":
-		return T("纯色随菜单栏自动显示为黑色或白色；彩色显示 CPA-Bar 标志的颜色。不影响进度条样式。", "Mono turns black or white with the menu bar; color shows the logo in its colors. The bars style is not affected.")
+		return T("纯色随菜单栏自动显示为黑色或白色；彩色显示 CPA-Bar 标志的颜色。用于“图标”菜单栏样式。", "Mono turns black or white with the menu bar; color shows the logo in its colors. For the Icon menu bar style.")
 	case "windows":
 		return T("纯色随任务栏的深浅显示为白色或黑色；彩色显示 CPA-Bar 标志的颜色。", "Mono is white or black to suit the taskbar; color shows the logo in its colors.")
 	}

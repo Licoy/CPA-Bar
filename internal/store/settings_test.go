@@ -63,6 +63,14 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in.LaunchAtLogin = true
 	in.Notifications = false
 	in.TrayText = false
+	in.TrayStyle = TrayStyleBattery
+	in.TrayWindow = TrayWindowLong
+	in.TrayMetersDetail = TrayDetailBoth
+	in.TrayBatteryDetail = TrayBatteryPercent
+	in.TrayBatteryVertical = true
+	in.TrayRingValues = true
+	in.TrayHideIcons = true
+	in.TrayStack = true
 	in.AutoCheckUpdates = false
 
 	if err := f.Save(in); err != nil {
@@ -556,15 +564,22 @@ func TestMemorySecrets(t *testing.T) {
 	}
 }
 
-// The battery style is gone: it shows as bars; unknown styles as the icon.
+// The bars are the meters style now; unknown styles show as the icon, and
+// unknown options as their defaults.
 func TestNormalizeTrayStyle(t *testing.T) {
-	for in, want := range map[string]string{"battery": TrayStyleBars, "bars": TrayStyleBars, "dots": TrayStyleIcon, "": TrayStyleIcon} {
+	for in, want := range map[string]string{"battery": TrayStyleBattery, "bars": TrayStyleMeters, "rings": TrayStyleRings, "dots": TrayStyleIcon, "": TrayStyleIcon} {
 		s := Defaults()
 		s.TrayStyle = in
 		s.Normalize()
 		if s.TrayStyle != want {
 			t.Errorf("%q normalizes to %q, want %q", in, s.TrayStyle, want)
 		}
+	}
+	s := Defaults()
+	s.TrayWindow, s.TrayMetersDetail, s.TrayBatteryDetail = "daily", "dots", "both"
+	s.Normalize()
+	if s.TrayWindow != TrayWindowAuto || s.TrayMetersDetail != TrayDetailPercent || s.TrayBatteryDetail != TrayBatteryCountdown {
+		t.Errorf("options normalize to %q %q %q", s.TrayWindow, s.TrayMetersDetail, s.TrayBatteryDetail)
 	}
 }
 

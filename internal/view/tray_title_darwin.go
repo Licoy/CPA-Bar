@@ -3,48 +3,66 @@
 package view
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/egoist/mygo"
 )
 
-// setTrayLines shows lines one over the other, in a small font, as the
-// title of the menu bar item. mygo sets only plain titles, so the item's
-// button is found among the app's windows, by the action mygo gives it,
-// and given an attributed title. Without a color of its own the text takes
-// the menu bar's, like a plain title.
-func setTrayLines(tray *mygo.Tray, lines []string) {
+// setTrayContent shows r instead of the logo. mygo's tray images are 18
+// points tall; the content is drawn for a 22 point status item, which
+// leaves room for two rows. The ink is the button's template image, which
+// the menu bar tints and highlights itself; the quota colors lie over it
+// in a view of their own.
+func setTrayContent(tray *mygo.Tray, r trayRender) error {
+	foreground, err := renderTrayImage(r, trayImageOptions{light: true, foreground: true})
+	if err != nil {
+		return err
+	}
+	colors, err := renderTrayImage(r, trayImageOptions{colorsOnly: true})
+	if err != nil {
+		return err
+	}
+	var applied error
 	mygo.RunOnMain(func() {
 		button := trayButton()
 		if button == 0 {
-			tray.SetTitle(strings.Join(lines, " · "))
+			applied = fmt.Errorf("status item button unavailable")
 			return
 		}
 		pool := objc.ID(objc.GetClass("NSAutoreleasePool")).Send(objc.RegisterName("new"))
 		defer pool.Send(objc.RegisterName("drain"))
+		image, err := trayNativeImage(foreground)
+		if err != nil {
+			applied = err
+			return
+		}
+		defer image.Send(objc.RegisterName("release"))
+		s := objc.Send[traySize](image, objc.RegisterName("size"))
+		if s.Height <= 0 {
+			applied = fmt.Errorf("status item image has no height")
+			return
+		}
+		tray.SetTitle("")
+		image.Send(objc.RegisterName("setSize:"), traySize{Width: s.Width * trayContentHeight / s.Height, Height: trayContentHeight})
+		image.Send(objc.RegisterName("setTemplate:"), true)
+		// The button sizes its highlight and hit area as its image is
+		// assigned, so the image has its size first.
+		button.Send(objc.RegisterName("setImage:"), image)
+		applied = setTrayColorOverlay(button, colors)
+	})
+	return applied
+}
 
-		const size, lineHeight = 9.0, 10.0
-		para := objc.ID(objc.GetClass("NSMutableParagraphStyle")).Send(objc.RegisterName("new"))
-		defer para.Send(objc.RegisterName("release"))
-		para.Send(objc.RegisterName("setMinimumLineHeight:"), float64(lineHeight))
-		para.Send(objc.RegisterName("setMaximumLineHeight:"), float64(lineHeight))
-		const weightMedium = 0.23 // NSFontWeightMedium
-		font := objc.ID(objc.GetClass("NSFont")).Send(objc.RegisterName("monospacedDigitSystemFontOfSize:weight:"), float64(size), float64(weightMedium))
-		// The lines are lowered to sit around the middle of the bar, beside
-		// the bars of the icon, which are lineHeight apart.
-		offset := objc.ID(objc.GetClass("NSNumber")).Send(objc.RegisterName("numberWithDouble:"), -lineHeight*float64(len(lines)-1)/2+0.75)
-
-		attrs := objc.ID(objc.GetClass("NSMutableDictionary")).Send(objc.RegisterName("dictionary"))
-		set := objc.RegisterName("setObject:forKey:")
-		attrs.Send(set, font, nsStr("NSFont"))
-		attrs.Send(set, para, nsStr("NSParagraphStyle"))
-		attrs.Send(set, offset, nsStr("NSBaselineOffset"))
-
-		title := objc.ID(objc.GetClass("NSAttributedString")).Send(objc.RegisterName("alloc")).
-			Send(objc.RegisterName("initWithString:attributes:"), nsStr(strings.Join(lines, "\n")), attrs)
-		defer title.Send(objc.RegisterName("release"))
-		button.Send(objc.RegisterName("setAttributedTitle:"), title)
+// clearTrayContent takes the quota colors off the button, before the logo
+// takes the content's place.
+func clearTrayContent() {
+	mygo.RunOnMain(func() {
+		if button := trayButton(); button != 0 {
+			if view := button.Send(objc.RegisterName("viewWithTag:"), trayOverlayTag); view != 0 {
+				view.Send(objc.RegisterName("removeFromSuperview"))
+			}
+		}
 	})
 }
 

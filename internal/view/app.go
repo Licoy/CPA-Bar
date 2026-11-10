@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -277,7 +278,9 @@ func (a *App) syncActive() {
 }
 
 type trayState struct {
-	look  trayLook
+	look trayLook
+	// quota, when set, is drawn instead of the logo.
+	quota *trayRender
 	title string
 	tip   string
 }
@@ -303,34 +306,35 @@ func (a *App) updateTray() {
 	}
 	settings := a.Svc.Settings()
 	st := trayState{look: a.trayLook(health), tip: "CPA-Bar\n" + overviewLine(o)}
-	if limit := trayGaugeLimit(settings.TrayStyle); limit > 0 {
-		var texts []string
-		for _, r := range a.trayRows(limit, time.Now()) {
-			st.look.gauges[st.look.n] = r.gauge
-			st.look.n++
-			texts = append(texts, r.text)
-			st.tip += "\n" + r.tip
+	if limit := trayAccountLimit(settings.TrayStyle); limit > 0 {
+		now := time.Now()
+		if accts, tips := a.trayQuota(limit, now); len(accts) > 0 {
+			r := buildTray(settings, accts, now)
+			st.quota = &r
+			st.tip += "\n" + strings.Join(tips, "\n")
 		}
-		st.title = strings.Join(texts, "\n")
 	}
-	if st.look.n == 0 && settings.TrayText && o.Instances > 0 && runtime.GOOS == "darwin" {
+	if st.quota == nil && settings.TrayText && o.Instances > 0 && runtime.GOOS == "darwin" {
 		st.title = fmt.Sprintf("%d/%d", o.Online, o.Instances)
 		if n := o.Accounts.Abnormal(); n > 0 {
 			st.title += fmt.Sprintf(" !%d", n)
 		}
 	}
-	if st == a.lastTray {
+	if reflect.DeepEqual(st, a.lastTray) {
 		return
 	}
-	if st.look != a.lastTray.look {
+	if st.quota != nil && !reflect.DeepEqual(st.quota, a.lastTray.quota) {
+		if err := setTrayContent(a.tray, *st.quota); err != nil {
+			log.Println("tray:", err)
+			st.quota = nil
+		}
+	}
+	if st.quota == nil && (a.lastTray.quota != nil || st.look != a.lastTray.look) {
+		clearTrayContent()
 		_ = a.tray.SetIcon(trayIcon(st.look))
 	}
 	if st.title != a.lastTray.title {
-		if strings.Contains(st.title, "\n") {
-			setTrayLines(a.tray, strings.Split(st.title, "\n"))
-		} else {
-			a.tray.SetTitle(st.title)
-		}
+		a.tray.SetTitle(st.title)
 	}
 	if st.tip != a.lastTray.tip {
 		a.tray.SetToolTip(st.tip)

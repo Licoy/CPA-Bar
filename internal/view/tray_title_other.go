@@ -3,11 +3,14 @@
 package view
 
 import (
-	"strings"
+	"errors"
 
 	"github.com/egoist/mygo"
 )
 
-// setTrayLines shows lines as the title of the tray item; only macOS has
-// titles, on one line.
-func setTrayLines(tray *mygo.Tray, lines []string) { tray.SetTitle(strings.Join(lines, " · ")) }
+// setTrayContent: only the macOS menu bar has room for the quota styles.
+func setTrayContent(*mygo.Tray, trayRender) error {
+	return errors.New("the quota styles need the macOS menu bar")
+}
+
+func clearTrayContent() {}
