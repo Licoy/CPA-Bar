@@ -116,7 +116,7 @@ func claudeReadWindow(row map[string]any, key, model string) (Window, error) {
 
 func claudeDollarPool(row map[string]any) bool {
 	for _, key := range []string{"limit_dollars", "used_dollars", "remaining_dollars"} {
-		if _, exists := row[key]; exists {
+		if row[key] != nil {
 			return true
 		}
 	}

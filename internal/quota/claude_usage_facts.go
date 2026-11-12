@@ -64,13 +64,13 @@ func claudeExtraFacts(extra map[string]any) ([]Fact, []Text, error) {
 		return nil, nil, err
 	}
 	currency := "$"
-	if value, exists := extra["currency"]; exists {
+	if value := extra["currency"]; value != nil {
 		code, ok := value.(string)
-		if !ok || strings.TrimSpace(code) == "" {
+		if !ok {
 			return nil, nil, passiveInvalid("extra_usage.currency")
 		}
 		code = strings.ToUpper(strings.TrimSpace(code))
-		if code != "USD" {
+		if code != "" && code != "USD" {
 			currency = code + " "
 		}
 	}

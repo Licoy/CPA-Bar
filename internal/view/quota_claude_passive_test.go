@@ -36,7 +36,17 @@ func setClaudeRecorded(srv *passiveCPA, raw json.RawMessage) {
 
 func TestClaudePassiveExtendedCredentialsDisplay(t *testing.T) {
 	a, id, srv, upstream, queue := passiveApp(t)
-	at := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	snapshot, _ := a.Svc.Snapshot(id)
+	cr := snapshot.Credentials[0]
+	_, legacyAt, err := quota.PassiveObservationMeta(cr)
+	if err != nil || legacyAt.IsZero() {
+		t.Fatalf("initial legacy observation: %v, %v", legacyAt, err)
+	}
+	e, _, _ := a.quotaEntryFor(snapshot, cr, time.Now())
+	if e == nil || e.err != nil || e.res == nil || !e.fromCPA || !e.observedAt.Equal(legacyAt) {
+		t.Fatalf("initial legacy cache: %+v", e)
+	}
+	at := legacyAt.Add(time.Minute)
 	setClaudeRecorded(srv, claudeRecorded(at, 42))
 	a.Svc.Refresh(id)
 	a.page = "accounts"

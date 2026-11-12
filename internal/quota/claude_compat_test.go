@@ -31,7 +31,7 @@ func TestClaudeRecordedServerCompatibleFields(t *testing.T) {
 		{name: "other currency", usage: `{"extra_usage":{"currency":"EUR","used_credits":1250,"monthly_limit":5000}}`, amount: "EUR 12.50 / EUR 50.00"},
 		{name: "default currency", usage: `{"extra_usage":{"used_credits":1250,"monthly_limit":5000}}`, amount: "$12.50 / $50.00"},
 		{name: "invalid currency", usage: `{"extra_usage":{"currency":true,"used_credits":1250}}`, invalid: true},
-		{name: "null currency", usage: `{"extra_usage":{"currency":null,"used_credits":1250}}`, invalid: true},
+		{name: "null currency", usage: `{"extra_usage":{"currency":null,"used_credits":1250}}`, amount: "$12.50"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cr := claudeRecorded(t, `{"usage":`+tc.usage+`,"usage_observed_at":"`+passiveStamp+`"}`)
