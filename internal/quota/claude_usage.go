@@ -163,6 +163,11 @@ func claudeDisplayWindows(usage map[string]any) ([]Window, error) {
 		if !isObject {
 			return nil, passiveInvalid(key)
 		}
+		// Window prefixes also cover metadata such as seven_day_breakdown.
+		// A present null field still identifies a genuine unknown quota.
+		if _, present := claudeFirstField(row, "utilization", "percent", "used_percent", "resets_at", "resetsAt"); !present && !dollars {
+			continue
+		}
 		win, err := claudeReadWindow(row, key, "")
 		if err != nil {
 			return nil, err
