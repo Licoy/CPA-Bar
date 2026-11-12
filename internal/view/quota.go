@@ -60,6 +60,7 @@ type quotaEntry struct {
 	observation   string
 	observedAt    time.Time
 	fromCPA       bool
+	timing        quotaTiming
 	manualPending *cpa.Credential
 
 	acting bool
@@ -414,6 +415,13 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 			}
 			if q.passiveFor(cr) {
 				ui.Text(c, e.sourceText()).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				for _, text := range e.timingTexts() {
+					color := t.TextMuted
+					if e.timing.err != nil {
+						color = t.Warning
+					}
+					ui.Text(c, text).FontSize(11).TextColor(color).MaxLines(2)
+				}
 			}
 			quotaGroups(c, r, now, cols)
 			for i, n := range r.Notes {

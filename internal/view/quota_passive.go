@@ -1,6 +1,12 @@
 package view
 
 import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
 	"github.com/licoy/cpa-bar/internal/cpa"
 	"github.com/licoy/cpa-bar/internal/quota"
 	"github.com/licoy/cpa-bar/internal/store"
@@ -36,6 +42,7 @@ func (e *quotaEntry) observe(cr cpa.Credential) {
 		return
 	}
 	observation := "observed:" + identity
+	e.timing = claudeQuotaTiming(cr, strings.HasPrefix(identity, "usage:"))
 	if e.observation == observation {
 		return
 	}
@@ -47,6 +54,60 @@ func (e *quotaEntry) observe(cr cpa.Credential) {
 	e.failures = 0
 	e.provider = quota.Provider{}
 	e.fromCPA = true
+}
+
+type quotaTiming struct {
+	age  *float64
+	next *time.Time
+	err  error
+}
+
+// Only display metadata attached to an accepted server observation; the quota
+// package remains responsible for selecting usage, normalized windows or headers.
+func claudeQuotaTiming(cr cpa.Credential, usage bool) quotaTiming {
+	if quota.ProviderKey(cr) != "claude" || len(cr.Raw) == 0 {
+		return quotaTiming{}
+	}
+	var record struct {
+		Subscription *struct {
+			Age  *float64   `json:"usage_age_seconds"`
+			Next *time.Time `json:"next_poll_at"`
+		} `json:"claude_subscription"`
+	}
+	if err := json.Unmarshal(cr.Raw, &record); err != nil {
+		return quotaTiming{err: err}
+	}
+	if record.Subscription == nil {
+		return quotaTiming{}
+	}
+	sub := record.Subscription
+	if sub.Age != nil && (math.IsNaN(*sub.Age) || math.IsInf(*sub.Age, 0) || *sub.Age < 0) {
+		return quotaTiming{err: fmt.Errorf("claude_subscription.usage_age_seconds: %v", *sub.Age)}
+	}
+	if !usage {
+		sub.Age = nil
+	}
+	if sub.Next != nil && !sub.Next.After(time.Unix(0, 0)) {
+		sub.Next = nil
+	}
+	return quotaTiming{age: sub.Age, next: sub.Next}
+}
+
+func (e *quotaEntry) timingTexts() []string {
+	if !e.fromCPA {
+		return nil
+	}
+	var texts []string
+	if e.timing.err != nil {
+		return []string{fmt.Sprintf(T("CPA 时间字段无效：%v", "Invalid CPA timing field: %v"), e.timing.err)}
+	}
+	if e.timing.age != nil {
+		texts = append(texts, fmt.Sprintf(T("CPA 缓存年龄 · %.0f 秒", "CPA cache age · %.0f seconds"), math.Floor(*e.timing.age)))
+	}
+	if e.timing.next != nil {
+		texts = append(texts, T("下次可查询 · ", "Next query allowed · ")+e.timing.next.Local().Format("01/02 15:04:05"))
+	}
+	return texts
 }
 
 func (e *quotaEntry) sourceText() string {
