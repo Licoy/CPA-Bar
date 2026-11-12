@@ -224,7 +224,7 @@ func (a *App) trayQuota(limit int, now time.Time) (accts []trayAccount, tips []s
 			acct.short, acct.long = e.res.Summary()
 		}
 		tip := trayTip(cr, acct)
-		if e != nil && a.Svc.Settings().PassiveQuota {
+		if e != nil && passiveQuota(a.Svc.Settings(), cr) {
 			if e.res != nil {
 				tip += " · " + e.sourceText()
 			} else {

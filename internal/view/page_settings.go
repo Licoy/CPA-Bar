@@ -140,10 +140,19 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 	}
 
 	settingsGroup(c, icRefresh, TintGreen, T("刷新", "Refresh"), func(row func(label, detail string, control func())) {
-		row(T("被动额度用量更新", "Passive quota updates"), T("跟随 CPA 已记录的额度数据，不再自动查询上游；手动刷新仍可查询，实例数据刷新间隔继续生效", "Follow quota data recorded by CPA without automatic upstream queries; manual quota refresh and instance polling remain available"), func() {
+		row(T("被动额度用量更新", "Passive quota updates"), T("适用于 Claude 以外的账号，跟随 CPA 已记录的额度数据，不再自动查询上游；手动刷新仍可查询，实例数据刷新间隔继续生效", "For non-Claude accounts, follow quota data recorded by CPA without automatic upstream queries; manual quota refresh and instance polling remain available"), func() {
 			on := cur.PassiveQuota
 			if ui.Switch(c.Key("passive-quota"), &on).Label(T("被动额度用量更新", "Passive quota updates")).Changed() {
 				if save(func(s *store.Settings) { s.PassiveQuota = on }) {
+					a.quotas = nil
+					a.changed()
+				}
+			}
+		})
+		row(T("Claude 被动额度用量更新", "Claude passive quota updates"), T("独立于全局被动额度设置，开启后 Claude 仅跟随 CPA 已记录的额度数据，关闭后按额度刷新间隔主动查询；手动刷新仍可查询上游", "Independent of the global passive quota setting; when enabled, Claude follows only CPA quota observations, otherwise it queries at the quota refresh interval; manual refresh can still query upstream"), func() {
+			on := cur.ClaudePassiveQuota
+			if ui.Switch(c.Key("claude-passive-quota"), &on).Label(T("Claude 被动额度用量更新", "Claude passive quota updates")).Changed() {
+				if save(func(s *store.Settings) { s.ClaudePassiveQuota = on }) {
 					a.quotas = nil
 					a.changed()
 				}
@@ -155,7 +164,7 @@ func settingsPage(c *ui.Context, env *PageEnv) {
 		row(T("当前实例刷新间隔（秒）", "Active instance interval (s)"), T("管理窗口或面板正在查看的实例，不少于 3 秒。", "The instance the window or panel shows; at least 3 s."), func() {
 			ui.TextInput(c.Key("act"), &st.active).Width(90).Label(T("当前实例刷新间隔（秒）", "Active instance interval (s)"))
 		})
-		row(T("额度刷新间隔（分钟）", "Quota refresh interval (min)"), T("默认 5 分钟，至少 1 分钟，账号显示时按此间隔查询额度；开启被动额度用量更新后不生效", "Defaults to 5 minutes, at least 1 minute; queries quota at this interval while accounts are displayed, and has no effect with passive quota updates enabled"), func() {
+		row(T("额度刷新间隔（分钟）", "Quota refresh interval (min)"), T("默认 5 分钟，至少 1 分钟，仅对主动查询的账号生效，账号显示时按此间隔查询额度", "Defaults to 5 minutes, at least 1 minute; applies only to accounts using active quota queries while displayed"), func() {
 			ui.TextInput(c.Key("quota-interval"), &st.quota).Width(90).Label(T("额度刷新间隔（分钟）", "Quota refresh interval (min)"))
 		})
 		row("", "", func() {

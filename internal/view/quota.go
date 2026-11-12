@@ -35,11 +35,12 @@ const (
 type quotaInstance struct {
 	// client is the client the cache was read with: a new one (another
 	// address or key) starts afresh.
-	id      string
-	passive bool
-	client  *cpa.Client
-	entries map[string]*quotaEntry
-	running int
+	id            string
+	passive       bool
+	claudePassive bool
+	client        *cpa.Client
+	entries       map[string]*quotaEntry
+	running       int
 
 	plugins     []cpa.Plugin
 	pluginsAt   time.Time
@@ -78,8 +79,9 @@ func (a *App) quotaCache(id string, cl *cpa.Client) *quotaInstance {
 		a.quotas = map[string]*quotaInstance{}
 	}
 	q := a.quotas[id]
-	if q == nil || q.client != cl || q.passive != a.Svc.Settings().PassiveQuota {
-		q = &quotaInstance{id: id, passive: a.Svc.Settings().PassiveQuota, client: cl, entries: map[string]*quotaEntry{}}
+	if q == nil || q.client != cl || !a.quotaCurrent(q) {
+		s := a.Svc.Settings()
+		q = &quotaInstance{id: id, passive: s.PassiveQuota, claudePassive: s.ClaudePassiveQuota, client: cl, entries: map[string]*quotaEntry{}}
 		a.quotas[id] = q
 	}
 	return q
@@ -115,7 +117,7 @@ func (a *App) quotaEntryFor(s core.InstanceSnapshot, cr cpa.Credential, now time
 		e = &quotaEntry{}
 		q.entries[cr.AuthIndex] = e
 	}
-	if q.passive {
+	if q.passiveFor(cr) {
 		e.observe(cr)
 	} else if cr.Health() != cpa.HealthDisabled {
 		if e.due(now, time.Duration(a.Svc.Settings().QuotaRefreshMinutes)*time.Minute) {
@@ -148,7 +150,7 @@ func (e *quotaEntry) nextRead(interval time.Duration) time.Time {
 // quotaFetch reads an account's quota. manual reads skip the bound on
 // parallel reads.
 func (a *App) quotaFetch(q *quotaInstance, e *quotaEntry, cr cpa.Credential, manual bool) {
-	if !a.quotaCurrent(q) || (!manual && (q.passive || cr.Health() == cpa.HealthDisabled)) || e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
+	if !a.quotaCurrent(q) || (!manual && (q.passiveFor(cr) || cr.Health() == cpa.HealthDisabled)) || e.fetching || e.acting || (!manual && q.running >= quotaParallel) {
 		return
 	}
 	if quota.NeedsPlugins(cr) && !a.quotaPlugins(q, manual) {
@@ -307,9 +309,6 @@ func quotaTier(remaining float64) int {
 // limit never reads 100%.
 func quotaPercent(w quota.Window) string {
 	if !w.Known {
-		if w.Detail != "" {
-			return w.Detail
-		}
 		return "—"
 	}
 	if w.Remaining <= 0 {
@@ -389,7 +388,7 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 				if facts {
 					for i, f := range r.Facts {
-						ui.Text(c.Key(fmt.Sprint("fact", i)), quotaText(f.Label)+" "+f.Value).FontSize(12).TextColor(t.TextMuted).SingleLine()
+						ui.Text(c.Key(fmt.Sprint("fact", i)), quotaText(f.Label)+" "+f.Value).FontSize(12).TextColor(t.TextMuted)
 					}
 				}
 				if !compact {
@@ -402,9 +401,9 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 		switch {
 		case r == nil && e.err != nil:
 			ui.Text(c, fmt.Sprintf(T("读取额度失败：%s", "Could not read the quota: %s"), quotaErrText(e.err))).FontSize(12).TextColor(t.Danger).MaxLines(3).Selectable()
-		case r == nil && q.passive && !e.fetching:
+		case r == nil && q.passiveFor(cr) && !e.fetching:
 			ui.Text(c, T("等待 CPA 额度数据", "Waiting for CPA quota data")).FontSize(12).TextColor(t.TextMuted)
-		case r == nil && !q.passive && cr.Health() == cpa.HealthDisabled && !e.fetching:
+		case r == nil && !q.passiveFor(cr) && cr.Health() == cpa.HealthDisabled && !e.fetching:
 			ui.Text(c, T("账号已停用，额度自动刷新已暂停", "Account disabled; automatic quota refresh paused")).FontSize(12).TextColor(t.TextMuted)
 		case r == nil:
 			ui.Text(c, T("正在读取额度…", "Reading the quota…")).FontSize(12).TextColor(t.TextMuted)
@@ -413,7 +412,7 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 				ui.Text(c, fmt.Sprintf(T("刷新失败（%s），以下是 %s 读取的额度", "Refresh failed (%s); the quota below was read %s"), quotaErrText(e.err), Ago(e.at, now))).
 					FontSize(11).TextColor(t.Warning).MaxLines(2).Selectable()
 			}
-			if q.passive {
+			if q.passiveFor(cr) {
 				ui.Text(c, e.sourceText()).FontSize(11).TextColor(t.TextMuted).SingleLine()
 			}
 			quotaGroups(c, r, now, cols)
@@ -497,14 +496,11 @@ func quotaWindow(c *ui.Context, w quota.Window, now time.Time) {
 		}
 		Bar(c, frac, col)
 		reset := quotaReset(w.ResetAt, now)
-		if w.Known && w.Detail != "" {
-			if reset != "" {
-				reset += " · "
-			}
-			reset += w.Detail
-		}
 		if reset != "" {
 			ui.Text(c, reset).FontSize(11).TextColor(t.TextMuted).FontFeatures("tnum").SingleLine()
+		}
+		if w.Detail != "" {
+			ui.Text(c, w.Detail).FontSize(11).TextColor(t.TextMuted).FontFeatures("tnum")
 		}
 	})
 }

@@ -58,6 +58,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	in.Language = LanguageEN
 	in.PanelOpaque = true
 	in.PassiveQuota = true
+	in.ClaudePassiveQuota = true
 	in.BackgroundRefresh = 60
 	in.ActiveRefresh = 5
 	in.LaunchAtLogin = true
@@ -590,8 +591,36 @@ func TestPassiveQuotaDefaultsOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PassiveQuota || Defaults().PassiveQuota {
+	if got.PassiveQuota || Defaults().PassiveQuota || got.ClaudePassiveQuota || Defaults().ClaudePassiveQuota {
 		t.Fatal("passive quota must default off")
+	}
+}
+
+func TestClaudePassiveQuotaIndependentSettings(t *testing.T) {
+	for _, global := range []bool{false, true} {
+		f := newFile(t)
+		raw, err := json.Marshal(map[string]any{"version": 1, "instances": []any{}, "passiveQuota": global})
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeRaw(t, f, string(raw))
+		got, err := f.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.PassiveQuota != global || got.ClaudePassiveQuota {
+			t.Fatalf("old configuration inherited global passive quota: %+v", got)
+		}
+		for _, claude := range []bool{true, false} {
+			got.ClaudePassiveQuota = claude
+			if err := f.Save(got); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := f.Load()
+			if err != nil || loaded.PassiveQuota != global || loaded.ClaudePassiveQuota != claude {
+				t.Fatalf("independent quota settings changed: global=%v, Claude=%v, loaded=%+v, err=%v", global, claude, loaded, err)
+			}
+		}
 	}
 }
 

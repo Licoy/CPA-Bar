@@ -72,7 +72,11 @@ func TestQuotaRefreshSettingsApplyToExistingCache(t *testing.T) {
 
 func TestQuotaRefreshDoesNotChangePluginCacheTTL(t *testing.T) {
 	a, id, _, _, queue := passiveApp(t)
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false; s.QuotaRefreshMinutes = 1 }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) {
+		s.PassiveQuota = false
+		s.ClaudePassiveQuota = false
+		s.QuotaRefreshMinutes = 1
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cl, err := a.Svc.Client(id)
@@ -128,7 +132,7 @@ func TestQuotaRefreshWakeScheduling(t *testing.T) {
 	if a.quotaWake != current {
 		t.Fatal("cancelled callback invalidated the new timer")
 	}
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = true }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = true; s.ClaudePassiveQuota = true }); err != nil {
 		t.Fatal(err)
 	}
 	a.syncQuotaWake()
@@ -136,7 +140,11 @@ func TestQuotaRefreshWakeScheduling(t *testing.T) {
 	if a.quotaWake != nil {
 		t.Fatal("passive mode scheduled an active wake")
 	}
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false; s.QuotaRefreshMinutes = 1 }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) {
+		s.PassiveQuota = false
+		s.ClaudePassiveQuota = false
+		s.QuotaRefreshMinutes = 1
+	}); err != nil {
 		t.Fatal(err)
 	}
 	a.syncQuotaWake()
@@ -159,7 +167,8 @@ func TestQuotaRefreshWakeIndependentOfCredentialPolling(t *testing.T) {
 	a, id, srv, upstream, q := passiveApp(t)
 	t.Cleanup(a.cancelQuotaWake)
 	if err := a.Svc.UpdateSettings(func(s *store.Settings) {
-		s.PassiveQuota = false
+		s.PassiveQuota = true
+		s.ClaudePassiveQuota = false
 		s.QuotaRefreshMinutes = 1
 		s.BackgroundRefresh = 600
 		s.ActiveRefresh = 360
@@ -199,6 +208,35 @@ func TestQuotaRefreshWakeIndependentOfCredentialPolling(t *testing.T) {
 	for _, request := range srv.requests[requests:] {
 		if request == "GET /v8/management/credentials" {
 			t.Fatal("quota wake depended on a credential poll")
+		}
+	}
+}
+
+func TestQuotaRefreshWakeTracksBothModes(t *testing.T) {
+	a, _ := newTestApp(t, false)
+	t.Cleanup(a.cancelQuotaWake)
+	now := time.Now()
+	for _, modes := range []struct{ global, claude bool }{
+		{false, false}, {true, false}, {false, false}, {false, true}, {true, true},
+	} {
+		oldID := a.quotaWakeID
+		if err := a.Svc.UpdateSettings(func(s *store.Settings) {
+			s.PassiveQuota, s.ClaudePassiveQuota = modes.global, modes.claude
+		}); err != nil {
+			t.Fatal(err)
+		}
+		a.syncQuotaWake()
+		if a.quotaWake != nil || a.quotaWakeID == oldID {
+			t.Fatalf("mode change retained a stale wake: %+v", modes)
+		}
+		a.scheduleQuotaWake(&quotaEntry{at: now}, now)
+		if (a.quotaWake == nil) != (modes.global && modes.claude) {
+			t.Fatalf("active mode could not schedule a wake: %+v", modes)
+		}
+		timer, id := a.quotaWake, a.quotaWakeID
+		a.syncQuotaWake()
+		if a.quotaWake != timer || a.quotaWakeID != id {
+			t.Fatalf("unchanged modes cancelled a wake: %+v", modes)
 		}
 	}
 }

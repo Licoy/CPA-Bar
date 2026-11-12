@@ -79,16 +79,12 @@ func fetchClaude(ctx context.Context, c Caller, cr cpa.Credential) (*Result, err
 		return nil, err
 	}
 
-	r := &Result{Groups: []Group{{Windows: claudeUsageWindows(usage)}}}
+	r, err := claudeUsageResult(usage)
+	if err != nil {
+		return nil, err
+	}
 	if profErr == nil {
 		r.Plan = claudePlan(profile)
-	}
-	if x := get(usage, "extra_usage"); x != nil {
-		if on, _ := flag(get(x, "is_enabled")); on {
-			used, _ := num(get(x, "used_credits"))
-			limit, _ := num(get(x, "monthly_limit"))
-			r.Facts = append(r.Facts, Fact{Text{"额外用量", "Extra usage"}, fmt.Sprintf("$%.2f / $%.2f", used/100, limit/100)})
-		}
 	}
 
 	var status *claudeGrantStatus
@@ -100,49 +96,12 @@ func fetchClaude(ctx context.Context, c Caller, cr cpa.Credential) (*Result, err
 		for _, g := range status.grants {
 			left += g.left
 		}
-		r.Facts = append([]Fact{{Text{"剩余重置次数", "Resets remaining"}, fmt.Sprint(left)}}, r.Facts...)
+		label := Text{"剩余重置次数", "Resets remaining"}
+		r.Facts = slices.DeleteFunc(r.Facts, func(f Fact) bool { return f.Label == label })
+		r.Facts = append([]Fact{{label, fmt.Sprint(left)}}, r.Facts...)
 	}
 	r.Actions = []Action{claudeResetAction(c, cr, status, grantsErr != nil, time.Now())}
 	return r, nil
-}
-
-func claudeUsageWindows(usage map[string]any) []Window {
-	fable := claudeFableLimit(usage)
-	var out []Window
-	for _, w := range claudeWindows {
-		win, ok := get(usage, w.key).(map[string]any)
-		if !ok {
-			continue
-		}
-		if _, has := win["utilization"]; !has {
-			continue
-		}
-		used, known := num(win["utilization"])
-		reset := instant(win["resets_at"])
-		if w.key == "iguana_necktie" {
-			credits := false
-			for _, k := range []string{"limit_dollars", "used_dollars", "remaining_dollars"} {
-				if _, ok := num(win[k]); ok {
-					credits = true
-				}
-			}
-			if credits {
-				out = append(out, usedWindow(Text{"云端会话额度", "Cloud session credits"}, used, known, reset))
-				continue
-			}
-			if fable != nil {
-				continue // the scoped limit below says the same, better
-			}
-		}
-		limit := usedWindow(w.label, used, known, reset)
-		limit.Kind = w.kind
-		out = append(out, limit)
-	}
-	if fable != nil {
-		used, _ := num(get(fable, "percent"))
-		out = append(out, usedWindow(Text{"7 天 Fable 5", "7-day Fable 5"}, used, true, instant(get(fable, "resets_at"))))
-	}
-	return out
 }
 
 // claudeFableLimit finds the weekly limit scoped to Fable, the active one
@@ -152,8 +111,7 @@ func claudeFableLimit(usage map[string]any) any {
 	var cands []any
 	for _, l := range limits {
 		name := strings.ToLower(str(get(l, "scope", "model", "display_name")))
-		_, hasPercent := num(get(l, "percent"))
-		if strings.ToLower(str(get(l, "kind"))) == "weekly_scoped" && (name == "fable" || name == "fable 5") && hasPercent {
+		if strings.ToLower(str(get(l, "kind"))) == "weekly_scoped" && claudeIsFable(name) {
 			cands = append(cands, l)
 		}
 	}

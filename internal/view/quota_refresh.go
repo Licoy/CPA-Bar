@@ -12,9 +12,9 @@ func (a *App) cancelQuotaWake() {
 
 func (a *App) syncQuotaWake() {
 	s := a.Svc.Settings()
-	if s.QuotaRefreshMinutes != a.quotaWakeMinutes || s.PassiveQuota != a.quotaWakePassive {
+	if s.QuotaRefreshMinutes != a.quotaWakeMinutes || s.PassiveQuota != a.quotaWakePassive || s.ClaudePassiveQuota != a.quotaWakeClaudePassive {
 		a.cancelQuotaWake()
-		a.quotaWakeMinutes, a.quotaWakePassive = s.QuotaRefreshMinutes, s.PassiveQuota
+		a.quotaWakeMinutes, a.quotaWakePassive, a.quotaWakeClaudePassive = s.QuotaRefreshMinutes, s.PassiveQuota, s.ClaudePassiveQuota
 	}
 }
 
@@ -22,7 +22,7 @@ func (a *App) syncQuotaWake() {
 // which accounts are still displayed. In-flight reads redraw on completion,
 // so an overdue entry waiting for the concurrency bound needs no busy loop.
 func (a *App) scheduleQuotaWake(e *quotaEntry, now time.Time) {
-	if a.quitting || a.quotaWakePassive || e.fetching || e.acting {
+	if a.quitting || (a.quotaWakePassive && a.quotaWakeClaudePassive) || e.fetching || e.acting {
 		return
 	}
 	at := e.nextRead(time.Duration(a.quotaWakeMinutes) * time.Minute)
@@ -41,7 +41,7 @@ func (a *App) expireQuotaWake(id uint64) {
 	}
 	a.cancelQuotaWake()
 	a.syncQuotaWake()
-	if a.quitting || a.quotaWakePassive {
+	if a.quitting || (a.quotaWakePassive && a.quotaWakeClaudePassive) {
 		return
 	}
 	a.updateTray()

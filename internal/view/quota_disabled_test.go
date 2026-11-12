@@ -21,7 +21,7 @@ func TestDisabledQuotaPausesAutomaticReads(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			a, id, _, upstream, q := passiveApp(t)
 			t.Cleanup(a.cancelQuotaWake)
-			if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false }); err != nil {
+			if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false; s.ClaudePassiveQuota = false }); err != nil {
 				t.Fatal(err)
 			}
 			snapshot, _ := a.Svc.Snapshot(id)
@@ -91,7 +91,7 @@ func TestDisabledQuotaKeepsPassiveObservations(t *testing.T) {
 
 func TestDisabledQuotaDoesNotDiscoverPluginsAutomatically(t *testing.T) {
 	a, id, srv, _, q := passiveApp(t)
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false; s.ClaudePassiveQuota = false }); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, _ := a.Svc.Snapshot(id)

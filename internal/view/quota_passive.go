@@ -1,37 +1,41 @@
 package view
 
 import (
-	"encoding/json"
-	"time"
-
 	"github.com/licoy/cpa-bar/internal/cpa"
 	"github.com/licoy/cpa-bar/internal/quota"
+	"github.com/licoy/cpa-bar/internal/store"
 )
 
 // A cache belongs to one connection and mode, so responses started before
 // a mode or connection change cannot publish into the current display.
 func (a *App) quotaCurrent(q *quotaInstance) bool {
-	return a.quotas[q.id] == q && q.passive == a.Svc.Settings().PassiveQuota
+	s := a.Svc.Settings()
+	return a.quotas[q.id] == q && q.passive == s.PassiveQuota && q.claudePassive == s.ClaudePassiveQuota
+}
+
+func passiveQuota(s store.Settings, cr cpa.Credential) bool {
+	if quota.ProviderKey(cr) == "claude" {
+		return s.ClaudePassiveQuota
+	}
+	return s.PassiveQuota
+}
+
+func (q *quotaInstance) passiveFor(cr cpa.Credential) bool {
+	return passiveQuota(store.Settings{PassiveQuota: q.passive, ClaudePassiveQuota: q.claudePassive}, cr)
 }
 
 func (e *quotaEntry) observe(cr cpa.Credential) {
 	res, at, err := quota.Passive(cr)
-	var envelope map[string]any
-	raw := cr.Raw
-	versionAt := at
-	if json.Unmarshal(cr.Raw, &envelope) == nil {
-		raw, _ = json.Marshal(envelope["quota"])
-		if recorded, ok := envelope["quota"].(map[string]any); ok {
-			stamp, _ := recorded["observed_at"].(string)
-			versionAt, _ = time.Parse(time.RFC3339Nano, stamp)
-		}
+	identity, versionAt, metaErr := quota.PassiveObservationMeta(cr)
+	if metaErr != nil {
+		res, err = nil, metaErr
 	}
 	// The server version remains usable even when its signals are invalid;
 	// compare server clocks only and keep the latest watermark on missing data.
 	if !versionAt.IsZero() && versionAt.Before(e.observedAt) {
 		return
 	}
-	observation := "observed:" + string(raw)
+	observation := "observed:" + identity
 	if e.observation == observation {
 		return
 	}

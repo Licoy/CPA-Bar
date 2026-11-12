@@ -55,12 +55,13 @@ type App struct {
 	panelOpenedAt time.Time
 	panelClosedAt time.Time
 	// quotas caches the quota of the accounts, per instance.
-	quotas           map[string]*quotaInstance
-	quotaWake        *time.Timer
-	quotaWakeAt      time.Time
-	quotaWakeID      uint64
-	quotaWakeMinutes int
-	quotaWakePassive bool
+	quotas                 map[string]*quotaInstance
+	quotaWake              *time.Timer
+	quotaWakeAt            time.Time
+	quotaWakeID            uint64
+	quotaWakeMinutes       int
+	quotaWakePassive       bool
+	quotaWakeClaudePassive bool
 
 	// selected is the instance of the management window, page its page.
 	selected string

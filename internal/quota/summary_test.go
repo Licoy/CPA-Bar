@@ -25,11 +25,14 @@ func TestSummary(t *testing.T) {
 
 // The providers mark their five-hour and weekly limits.
 func TestWindowKinds(t *testing.T) {
-	claude := claudeUsageWindows(map[string]any{
+	claude, err := claudeDisplayWindows(map[string]any{
 		"five_hour":      map[string]any{"utilization": 10.0},
 		"seven_day":      map[string]any{"utilization": 40.0},
 		"seven_day_opus": map[string]any{"utilization": 90.0},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(claude) != 3 || claude[0].Kind != KindShort || claude[1].Kind != KindLong || claude[2].Kind != KindOther {
 		t.Errorf("claude kinds: %+v", claude)
 	}

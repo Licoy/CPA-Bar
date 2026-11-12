@@ -72,7 +72,7 @@ func passiveApp(t *testing.T) (*App, string, *passiveCPA, *quotaCPA, *uiQueue) {
 		t.Fatal(err)
 	}
 	t.Cleanup(svc.Close)
-	if err := svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = true }); err != nil {
+	if err := svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = true; s.ClaudePassiveQuota = true }); err != nil {
 		t.Fatal(err)
 	}
 	id, err := svc.AddInstance(context.Background(), core.InstanceInput{Name: "Home", Address: srv.URL, Key: testKey})
@@ -180,7 +180,7 @@ func TestPassiveQuotaMissingAndMalformedAreVisible(t *testing.T) {
 
 func TestPassiveQuotaIgnoresOldInflightAndActiveResumes(t *testing.T) {
 	a, id, srv, upstream, q := passiveApp(t)
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.ClaudePassiveQuota = false }); err != nil {
 		t.Fatal(err)
 	}
 	srv.mu.Lock()
@@ -192,7 +192,7 @@ func TestPassiveQuotaIgnoresOldInflightAndActiveResumes(t *testing.T) {
 	if !old.fetching {
 		t.Fatal("active mode did not start an upstream read")
 	}
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = true }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.ClaudePassiveQuota = true }); err != nil {
 		t.Fatal(err)
 	}
 	e, _, _ := a.quotaEntryFor(snapshot, snapshot.Credentials[0], time.Now())
@@ -207,7 +207,7 @@ func TestPassiveQuotaIgnoresOldInflightAndActiveResumes(t *testing.T) {
 		t.Fatalf("old active response replaced passive quota: %q", tt.Texts())
 	}
 	before := upstream.count("GET")
-	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.PassiveQuota = false }); err != nil {
+	if err := a.Svc.UpdateSettings(func(s *store.Settings) { s.ClaudePassiveQuota = false }); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, tt, q, "active mode restored", func() bool { return tt.HasText("剩余 95%") })

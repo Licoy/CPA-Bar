@@ -222,49 +222,73 @@ func TestUnsupportedOpaqueSettingIsVisibleAndCanBeCleared(t *testing.T) {
 
 func TestPassiveQuotaSwitch(t *testing.T) {
 	defer SetLanguage(store.LanguageZH)
-	_ = SetLanguage(store.LanguageZH)
-	a, _ := newTestApp(t, false)
-	a.page = "settings"
-	tt := ui.NewTester(a.managerView, managerWidth, 1800)
-	if a.Svc.Settings().PassiveQuota {
-		t.Fatal("passive quota is enabled by default")
-	}
-	clickPassiveQuotaSwitch(t, tt, "被动额度用量更新")
-	tt.Frame()
-	if !a.Svc.Settings().PassiveQuota {
-		t.Fatal("switch did not enable passive quota")
-	}
-	if dir := os.Getenv("CPABAR_SNAPSHOTS"); dir != "" {
-		saveSnapshot(t, filepath.Join(dir, "settings-passive-quota.png"), tt)
-	}
-	if err := tt.Click("English"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	clickPassiveQuotaSwitch(t, tt, "Passive quota updates")
-	tt.Frame()
-	if a.Svc.Settings().PassiveQuota {
-		t.Fatal("switch did not disable passive quota")
+	for _, language := range []struct{ code, choice, heading, global, claude string }{
+		{store.LanguageZH, "简体中文", "外观", "被动额度用量更新", "Claude 被动额度用量更新"},
+		{store.LanguageEN, "English", "Appearance", "Passive quota updates", "Claude passive quota updates"},
+	} {
+		t.Run(language.code, func(t *testing.T) {
+			a, _ := newTestApp(t, false)
+			a.page = "settings"
+			tt := ui.NewTester(a.managerView, managerWidth, 1800)
+			if err := tt.Click(language.choice); err != nil {
+				t.Fatal(err)
+			}
+			tt.Frame()
+			if a.Svc.Settings().Language != language.code || !tt.HasText(language.heading) || !tt.HasText(language.global) || !tt.HasText(language.claude) {
+				t.Fatalf("settings are not in %s: %q", language.code, tt.Texts())
+			}
+			if a.Svc.Settings().PassiveQuota || a.Svc.Settings().ClaudePassiveQuota {
+				t.Fatal("passive quota is enabled by default")
+			}
+			for _, step := range []struct {
+				label          string
+				global, claude bool
+			}{
+				{language.global, true, false},
+				{language.claude, true, true},
+				{language.global, false, true},
+				{language.claude, false, false},
+			} {
+				clickPassiveQuotaSwitch(t, tt, step.label)
+				tt.Frame()
+				got := a.Svc.Settings()
+				if got.PassiveQuota != step.global || got.ClaudePassiveQuota != step.claude {
+					t.Fatalf("after %q: global=%v, Claude=%v, want %v, %v", step.label, got.PassiveQuota, got.ClaudePassiveQuota, step.global, step.claude)
+				}
+			}
+			if dir := os.Getenv("CPABAR_SNAPSHOTS"); dir != "" {
+				saveSnapshot(t, filepath.Join(dir, "settings-passive-quota-"+language.code+".png"), tt)
+			}
+		})
 	}
 }
 
 func TestPassiveQuotaSwitchSaveFailure(t *testing.T) {
+	defer SetLanguage(store.LanguageZH)
 	_ = SetLanguage(store.LanguageZH)
-	svc, err := core.New(core.Options{Settings: failingSettings{store.Defaults()}, Secrets: &store.MemorySecrets{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer svc.Close()
-	a := NewApp(svc)
-	a.page = "settings"
-	tt := ui.NewTester(a.managerView, managerWidth, 1800)
-	clickPassiveQuotaSwitch(t, tt, "被动额度用量更新")
-	tt.Frame()
-	if a.Svc.Settings().PassiveQuota {
-		t.Fatal("failed save changed passive quota mode")
-	}
-	if !tt.HasText("save settings: disk full") {
-		t.Fatalf("missing save error: %q", tt.Texts())
+	for _, enabled := range []bool{false, true} {
+		for _, label := range []string{"被动额度用量更新", "Claude 被动额度用量更新"} {
+			t.Run(label, func(t *testing.T) {
+				settings := store.Defaults()
+				settings.PassiveQuota, settings.ClaudePassiveQuota = enabled, enabled
+				svc, err := core.New(core.Options{Settings: failingSettings{settings}, Secrets: &store.MemorySecrets{}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer svc.Close()
+				a := NewApp(svc)
+				a.page = "settings"
+				tt := ui.NewTester(a.managerView, managerWidth, 1800)
+				clickPassiveQuotaSwitch(t, tt, label)
+				tt.Frame()
+				if got := a.Svc.Settings(); got.PassiveQuota != enabled || got.ClaudePassiveQuota != enabled {
+					t.Fatal("failed save changed passive quota mode")
+				}
+				if !tt.HasText("save settings: disk full") {
+					t.Fatalf("missing save error: %q", tt.Texts())
+				}
+			})
+		}
 	}
 }
 

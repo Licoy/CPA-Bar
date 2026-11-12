@@ -104,8 +104,10 @@ type Settings struct {
 	// Refresh intervals in seconds.
 	BackgroundRefresh int `json:"backgroundRefresh"`
 	ActiveRefresh     int `json:"activeRefresh"`
-	// PassiveQuota follows quota observations recorded by CPA.
+	// PassiveQuota follows quota observations recorded by CPA for non-Claude accounts.
 	PassiveQuota bool `json:"passiveQuota,omitempty"`
+	// ClaudePassiveQuota independently follows CPA quota observations for Claude.
+	ClaudePassiveQuota bool `json:"claudePassiveQuota,omitempty"`
 	// QuotaRefreshMinutes is the interval between visible account quota reads.
 	QuotaRefreshMinutes int `json:"quotaRefreshMinutes"`
 

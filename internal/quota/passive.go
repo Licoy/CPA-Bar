@@ -3,6 +3,7 @@ package quota
 import (
 	"encoding/json"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,13 @@ func Passive(cr cpa.Credential) (*Result, time.Time, error) {
 	provider := ProviderKey(cr)
 	if provider != "claude" && provider != "codex" && provider != "devin" {
 		return nil, time.Time{}, nil
+	}
+	if provider == "claude" {
+		result, observed, err := passiveClaudeRecorded(cr)
+		if err != nil || result == nil {
+			return nil, time.Time{}, err
+		}
+		return result, observed, nil
 	}
 	signals, observed, err := passiveSnapshot(cr.Raw)
 	if err != nil || signals == nil {
@@ -120,8 +128,27 @@ func passiveUnix(signals map[string]string, key string) (time.Time, error) {
 }
 
 func passiveClaude(signals map[string]string) (*Result, error) {
+	periods := map[string]bool{"5h": true, "7d": true}
+	for key := range signals {
+		suffix := strings.TrimPrefix(key, "anthropic-ratelimit-unified-")
+		if suffix == key {
+			continue
+		}
+		for _, field := range []string{"-utilization", "-reset"} {
+			if strings.HasSuffix(suffix, field) {
+				periods[strings.TrimSuffix(suffix, field)] = true
+			}
+		}
+	}
+	extra := make([]string, 0, len(periods))
+	for key := range periods {
+		if key != "5h" && key != "7d" {
+			extra = append(extra, key)
+		}
+	}
+	sort.Strings(extra)
 	var windows []Window
-	for i, period := range []string{"5h", "7d"} {
+	for _, period := range append([]string{"5h", "7d"}, extra...) {
 		prefix := "anthropic-ratelimit-unified-" + period
 		used, known, err := passiveNumber(signals, prefix+"-utilization", 1)
 		if err != nil {
@@ -138,12 +165,30 @@ func passiveClaude(signals map[string]string) (*Result, error) {
 		if known {
 			remaining = 1 - used
 		}
-		windows = append(windows, Window{Label: claudeWindows[i].label, Kind: claudeWindows[i].kind, Known: known, Remaining: remaining, ResetAt: reset})
+		label, kind := claudeHeaderLabel(period)
+		windows = append(windows, Window{Label: label, Kind: kind, Known: known, Remaining: remaining, ResetAt: reset})
 	}
 	if len(windows) == 0 {
 		return nil, nil
 	}
 	return &Result{Groups: []Group{{Windows: windows}}}, nil
+}
+
+func claudeHeaderLabel(period string) (Text, WindowKind) {
+	key := period
+	switch {
+	case period == "5h":
+		key = "five_hour"
+	case period == "7d":
+		key = "seven_day"
+	case period == "7d_oi":
+		key = "seven_day_fable"
+	case strings.HasPrefix(period, "7d-"):
+		key = "seven_day_" + strings.TrimPrefix(period, "7d-")
+	case strings.HasPrefix(period, "5h-"):
+		key = "five_hour_" + strings.TrimPrefix(period, "5h-")
+	}
+	return claudeLabel(key, "")
 }
 
 func passiveDevin(signals map[string]string) (*Result, error) {
