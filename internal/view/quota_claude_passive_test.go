@@ -56,7 +56,8 @@ func TestClaudePassiveExtendedCredentialsDisplay(t *testing.T) {
 	panel.Frame()
 	queue.drain()
 	for name, screen := range map[string]*ui.Tester{"accounts": tt, "panel": panel} {
-		for _, want := range []string{"5 小时限额", "7 天限额", "7 天 Sonnet", "7 天 Fable 5", "Future Model", "$12.50 / $50.00", "$95.00", "$20.00", "剩余重置次数 3", "CPA 观测 · " + at.Local().Format("01/02 15:04:05"), time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC).Local().Format("01/02 15:04")} {
+		assertClaudeTimingSource(t, screen, at)
+		for _, want := range []string{"5 小时限额", "7 天限额", "7 天 Sonnet", "7 天 Fable 5", "Future Model", "$12.50 / $50.00", "$95.00", "$20.00", "剩余重置次数 3", "最后更新时间", at.Local().Format("01/02 15:04:05"), time.Date(2026, 11, 19, 9, 0, 0, 0, time.UTC).Local().Format("01/02 15:04")} {
 			if !strings.Contains(strings.Join(screen.Texts(), "\n"), want) {
 				t.Errorf("%s lacks %q: %q", name, want, screen.Texts())
 			}

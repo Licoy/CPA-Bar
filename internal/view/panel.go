@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/licoy/cpa-bar/internal/core"
 	"github.com/licoy/cpa-bar/internal/cpa"
+	"github.com/licoy/cpa-bar/internal/quota"
 	"github.com/licoy/cpa-bar/internal/store"
 )
 
@@ -237,6 +238,7 @@ func (a *App) panelOne(c *ui.Context, s core.InstanceSnapshot, lists *panelList)
 		}
 		return
 	}
+	allocations := claudeAllocations(c, s, now)
 	creds := pinnedFirst(sortedForPanel(s.Credentials), s.Profile.PinnedAccounts)
 	if len(creds) == 0 {
 		EmptyState(c, T("没有账号", "No accounts"), T("这个实例还没有认证文件。", "This instance has no credentials yet."))
@@ -244,11 +246,11 @@ func (a *App) panelOne(c *ui.Context, s core.InstanceSnapshot, lists *panelList)
 	}
 	lists.creds.Key = func(i int) any { return credKeyOf(creds[i]) }
 	ui.List(c, &lists.creds, len(creds), func(i int) {
-		a.panelCred(c, s, creds[i], now)
+		a.panelCred(c, s, creds[i], now, allocations[credKeyOf(creds[i])])
 	}).Grow(1).Radius(12).Background(pal(t).Card).Padding(4, 0)
 }
 
-func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credential, now time.Time) {
+func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credential, now time.Time, allocation []quota.ClaudeTargetAllocation) {
 	t := c.Theme()
 	h := cr.Health()
 	key := s.Profile.ID + "\x00" + credKeyOf(cr)
@@ -260,7 +262,7 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 	ui.Column(c).Padding(6, 10).Gap(3).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			credTile(c, cr, 26, pal(t).Card)
-			ui.Column(c).Grow(1).Gap(1).Children(func() {
+			ui.Column(c).Grow(1).Basis(0).Gap(1).Children(func() {
 				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, PrivName(cr.DisplayName())).SingleLine().FontSize(13).FontWeight(500)
 					if s.Profile.Pinned(credFileName(cr)) {
@@ -281,6 +283,7 @@ func (a *App) panelCred(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 			if task.Running {
 				ui.Spinner(c).Label(T("正在提交", "Saving"))
 			}
+			allocationView(c, allocation)
 			on := !cr.Disabled
 			label := fmt.Sprintf(T("启用 %s", "Enable %s"), PrivName(cr.DisplayName()))
 			if ui.Switch(c.Key(key), &on).Label(label).Disabled(task.Running || cr.RuntimeOnly || s.Stale).Changed() {

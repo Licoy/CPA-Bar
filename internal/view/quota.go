@@ -414,14 +414,7 @@ func (a *App) quotaView(c *ui.Context, s core.InstanceSnapshot, cr cpa.Credentia
 					FontSize(11).TextColor(t.Warning).MaxLines(2).Selectable()
 			}
 			if q.passiveFor(cr) {
-				ui.Text(c, e.sourceText()).FontSize(11).TextColor(t.TextMuted).SingleLine()
-				for _, text := range e.timingTexts() {
-					color := t.TextMuted
-					if e.timing.err != nil {
-						color = t.Warning
-					}
-					ui.Text(c, text).FontSize(11).TextColor(color).MaxLines(2)
-				}
+				e.timingView(c)
 			}
 			quotaGroups(c, r, now, cols)
 			for i, n := range r.Notes {

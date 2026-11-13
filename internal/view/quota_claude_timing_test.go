@@ -38,7 +38,7 @@ func TestClaudeTimingDisplaysOnAccountsAndPanel(t *testing.T) {
 	a.Svc.Refresh(id)
 	a.page = "accounts"
 	tt := ui.NewTester(a.managerView, managerWidth, 1800)
-	waitFor(t, tt, queue, "Claude timing", func() bool { return tt.HasText("CPA 缓存年龄 · 90 秒") })
+	waitFor(t, tt, queue, "Claude timing", func() bool { return tt.HasText("90 秒") })
 	previous := lang.Load().(string)
 	t.Cleanup(func() { setResolvedLanguage(previous) })
 	for _, language := range []string{store.LanguageZH, store.LanguageEN} {
@@ -48,16 +48,33 @@ func TestClaudeTimingDisplaysOnAccountsAndPanel(t *testing.T) {
 		panel.Frame()
 		for name, screen := range map[string]*ui.Tester{"accounts": tt, "panel": panel} {
 			for _, want := range []string{
-				T("CPA 观测 · ", "CPA observation · ") + at.Local().Format("01/02 15:04:05"),
-				T("CPA 缓存年龄 · 90 秒", "CPA cache age · 90 seconds"),
-				T("下次可查询 · ", "Next query allowed · ") + next.Local().Format("01/02 15:04:05"),
+				T("最后更新时间", "Last updated"),
+				at.Local().Format("01/02 15:04:05"),
+				T("缓存年龄", "Cache age"),
+				T("90 秒", "90 seconds"),
+				T("下次可查询时间", "Next query allowed"),
+				next.Local().Format("01/02 15:04:05"),
 			} {
 				if !screen.HasText(want) {
 					t.Errorf("%s/%s lacks %q: %q", language, name, want, screen.Texts())
 				}
 			}
-			if screen.HasText(T("CPA 观测 · ", "CPA observation · ") + at.Add(time.Hour).Local().Format("01/02 15:04:05")) {
+			if screen.HasText(at.Add(time.Hour).Local().Format("01/02 15:04:05")) {
 				t.Errorf("%s/%s substituted header time for usage query time", language, name)
+			}
+			labels := []string{T("最后更新时间", "Last updated"), T("缓存年龄", "Cache age"), T("下次可查询时间", "Next query allowed")}
+			values := []string{at.Local().Format("01/02 15:04:05"), T("90 秒", "90 seconds"), next.Local().Format("01/02 15:04:05")}
+			var previousRect ui.Rect
+			for i, label := range labels {
+				r, found := screen.Find(label)
+				value, valueFound := screen.Find(values[i])
+				if !found || !valueFound || (i > 0 && (r.Y != previousRect.Y || r.X <= previousRect.X+previousRect.W)) || value.Y <= r.Y || value.X != r.X {
+					t.Errorf("%s/%s timing columns misaligned: label=%+v value=%+v previous=%+v", language, name, r, value, previousRect)
+				}
+				if i > 0 && previousRect.X+previousRect.W > r.X {
+					t.Errorf("timing labels overlap")
+				}
+				previousRect = r
 			}
 			for _, label := range []string{T("5 小时限额", "5-hour limit"), T("7 天限额", "7-day limit"), T("7 天 Fable 5", "7-day Fable 5")} {
 				count := 0
@@ -156,4 +173,19 @@ func TestClaudeTimingOptionalAndMalformedFields(t *testing.T) {
 	if legacy.res == nil || legacy.err != nil || len(legacy.timingTexts()) != 0 || !strings.Contains(legacy.sourceText(), at.Local().Format("01/02 15:04:05")) {
 		t.Fatalf("legacy timing changed: %+v", legacy)
 	}
+}
+
+func assertClaudeTimingSource(t *testing.T, screen *ui.Tester, at time.Time) {
+	t.Helper()
+	r, ok := screen.Find(T("最后更新时间", "Last updated"))
+	if !ok {
+		t.Fatal("missing last updated label")
+	}
+	screen.Move(r.X+r.W/2, r.Y+r.H/2)
+	screen.Advance(time.Second)
+	if !screen.HasText(T("CPA 观测 · ", "CPA observation · ") + at.Local().Format("01/02 15:04:05")) {
+		t.Errorf("CPA provenance missing from timing tooltip: %q", screen.Texts())
+	}
+	screen.Move(0, 0)
+	screen.Frame()
 }

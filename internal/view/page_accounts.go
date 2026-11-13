@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/licoy/cpa-bar/internal/core"
 	"github.com/licoy/cpa-bar/internal/cpa"
+	"github.com/licoy/cpa-bar/internal/quota"
 )
 
 func init() {
@@ -111,6 +112,7 @@ func accountsPage(c *ui.Context, env *PageEnv) {
 	t := c.Theme()
 	a := env.App
 	snap := env.Snap
+	allocations := claudeAllocations(c, snap, env.Now)
 	st := State(env, "accounts", newAccountsState)
 
 	canWrite := env.Client != nil
@@ -241,7 +243,7 @@ func accountsPage(c *ui.Context, env *PageEnv) {
 		// The list takes the height the window leaves; a short list keeps
 		// to about its rows.
 		fillHeight(ui.List(c.Key("list"), &st.list, len(rows), func(i int) {
-			accountRow(c, env, st, rows[i], canWrite, fresh)
+			accountRow(c, env, st, rows[i], canWrite, fresh, allocations[credKeyOf(rows[i])])
 		}), min(accountsListLeast, float32(len(rows))*accountsRowEstimate))
 	}
 
@@ -274,7 +276,7 @@ func accountsImportReport(c *ui.Context, st *accountsState) {
 
 // accountRow is one account: a soft card with its health, who it is, its
 // counts, status, the switch, Edit, and the rest of the actions in a menu.
-func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credential, canWrite, fresh bool) {
+func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credential, canWrite, fresh bool, allocation []quota.ClaudeTargetAllocation) {
 	t := c.Theme()
 	key := credKeyOf(cr)
 	h := cr.Health()
@@ -325,6 +327,7 @@ func accountRow(c *ui.Context, env *PageEnv, st *accountsState, cr cpa.Credentia
 				ui.Text(c, fmt.Sprintf(T("成功 %d · 失败 %d", "OK %d · Failed %d"), cr.Success, cr.Failed)).FontSize(12).TextColor(t.TextMuted).FontFeatures("tnum").SingleLine()
 				Pill(c.Key("status"), HealthLabel(h), col)
 
+				allocationView(c, allocation)
 				on := h != cpa.HealthDisabled
 				canToggle := fresh && !cr.RuntimeOnly && !busy
 				tip := fmt.Sprintf(T("在“%s”上启用或停用此账号", "Enable or disable this account on “%s”"), instance)

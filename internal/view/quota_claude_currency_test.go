@@ -28,8 +28,9 @@ func TestClaudePassiveNullableCurrencyDisplay(t *testing.T) {
 	panel.Frame()
 	queue.drain()
 	for name, screen := range map[string]*ui.Tester{"accounts": accounts, "panel": panel} {
+		assertClaudeTimingSource(t, screen, at)
 		text := strings.Join(screen.Texts(), "\n")
-		for _, want := range []string{"5 小时限额", "7 天限额", "7 天 Fable 5", "$12.50 / $50.00", "额外用量已启用", "剩余重置次数 3", "CPA 观测 · " + at.Local().Format("01/02 15:04:05")} {
+		for _, want := range []string{"5 小时限额", "7 天限额", "7 天 Fable 5", "$12.50 / $50.00", "额外用量已启用", "剩余重置次数 3", "最后更新时间", at.Local().Format("01/02 15:04:05")} {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s lacks %q: %q", name, want, screen.Texts())
 			}

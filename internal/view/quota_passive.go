@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/licoy/cpa-bar/internal/cpa"
 	"github.com/licoy/cpa-bar/internal/quota"
 	"github.com/licoy/cpa-bar/internal/store"
@@ -119,4 +120,35 @@ func (e *quotaEntry) sourceText() string {
 		source += " · " + e.at.Local().Format("01/02 15:04:05")
 	}
 	return source
+}
+
+// Fork timing is displayed together, without substituting local query times.
+func (e *quotaEntry) timingView(c *ui.Context) {
+	t := c.Theme()
+	if !e.fromCPA || e.at.IsZero() || e.timing.err != nil || (e.timing.age == nil && e.timing.next == nil) {
+		ui.Text(c, e.sourceText()).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		for _, text := range e.timingTexts() {
+			ui.Text(c, text).FontSize(11).TextColor(t.Warning).MaxLines(2)
+		}
+		return
+	}
+	age, next := T("未知", "Unknown"), T("未知", "Unknown")
+	if e.timing.age != nil {
+		age = fmt.Sprintf(T("%.0f 秒", "%.0f seconds"), math.Floor(*e.timing.age))
+	}
+	if e.timing.next != nil {
+		next = e.timing.next.Local().Format("01/02 15:04:05")
+	}
+	ui.Row(c).Gap(8).Tooltip(e.sourceText()).Children(func() {
+		for _, item := range [][2]string{
+			{T("最后更新时间", "Last updated"), e.at.Local().Format("01/02 15:04:05")},
+			{T("缓存年龄", "Cache age"), age},
+			{T("下次可查询时间", "Next query allowed"), next},
+		} {
+			ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
+				ui.Text(c, item[0]).FontSize(11).TextColor(t.TextMuted).SingleLine()
+				ui.Text(c, item[1]).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			})
+		}
+	})
 }
